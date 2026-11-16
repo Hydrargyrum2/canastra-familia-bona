@@ -1,0 +1,8 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  // Jméno musí odpovídat jménu Workeru v Cloudflare dashboardu.
+  "name": "canastra-familia-bona",
+  "compatibility_date": "2025-10-01",
+  // Zatím jen statická hra (proti robotům). Server pro online hru přibude později.
+  "assets": { "directory": "./public" }
+}
