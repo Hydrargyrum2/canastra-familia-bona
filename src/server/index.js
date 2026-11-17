@@ -16,7 +16,7 @@ const EMOTES = ['laugh', 'slow', 'sleep', 'luck', 'clown', 'fire', 'joker', 'bla
 const CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 const DISCONNECT_MS = 60_000;
 const BOT_DELAY_MS = 900;
-const TURN_MS = 120_000; // limit na tah; pak za hráče zahraje střední robot
+const TURN_MS = 120_000; // limit na tah (jen když hrají aspoň dva lidé); pak za hráče zahraje střední robot
 const PBKDF2_ITER = 20_000;
 
 const M = (k, p) => ({ k, p: p || {} });
@@ -1011,11 +1011,8 @@ export class Table extends DurableObject {
       delete s.timers.turn;
       s.turnSeat = null;
     }
-    if (s.status === 'playing' && g && g.phase === 'roundOver' && humansAtTable >= 2) {
-      if (!s.timers.ready) s.timers.ready = Date.now() + turnMs;
-    } else {
-      delete s.timers.ready;
-    }
+    // další kolo se nespouští samo: každý si může v klidu prohlédnout výsledky
+    delete s.timers.ready;
     const due = Object.values(s.timers).filter(Boolean);
     if (due.length) await this.ctx.storage.setAlarm(Math.min(...due));
     else await this.ctx.storage.deleteAlarm();
@@ -1055,14 +1052,6 @@ export class Table extends DurableObject {
         changed = true;
       }
       s.turnSeat = null;
-    }
-    if (s.timers.ready && s.timers.ready <= now) {
-      delete s.timers.ready;
-      if (s.status === 'playing' && s.game && s.game.phase === 'roundOver') {
-        s.seats.forEach((_, i) => { s.ready[i] = true; });
-        this.maybeNextRound();
-        changed = true;
-      }
     }
     if (s.timers.bot && s.timers.bot <= now) {
       delete s.timers.bot;
@@ -1128,7 +1117,6 @@ export class Table extends DurableObject {
       rated: !!s.rated,
       lastResult: s.lastResult,
       turnDeadline: s.timers.turn || null,
-      readyDeadline: s.timers.ready || null,
       now: Date.now(),
       game: this.gameView(seat),
     };

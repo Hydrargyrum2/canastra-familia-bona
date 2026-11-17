@@ -528,10 +528,9 @@
       } else {
         const humans = v.seats.map((x, i) => ({ x, i })).filter(({ x }) => x && x.kind === 'human' && x.connected && !x.botControl);
         const ready = humans.filter(({ i }) => v.ready[i]).length;
-        const auto = v.readyDeadline ? `<p class="seghint" data-deadline="${v.readyDeadline}" data-prefix="auto_next"></p>` : '';
         buttons = v.ready[ME]
-          ? `<p class="seghint">${esc(t('wait_others', { n: ready, m: humans.length }))}</p>${auto}<button class="btn" data-act="close">${esc(t('look_table'))}</button>`
-          : `<button class="btn primary" data-act="nextround">${esc(t('next_round'))}</button>${auto}<button class="btn" data-act="close">${esc(t('look_table'))}</button>`;
+          ? `<p class="seghint">${esc(t('wait_others', { n: ready, m: humans.length }))}</p><button class="btn" data-act="close">${esc(t('look_table'))}</button>`
+          : `<button class="btn primary" data-act="nextround">${esc(t('next_round'))}</button><button class="btn" data-act="close">${esc(t('look_table'))}</button>`;
       }
     } else {
       buttons = st.phase === 'gameOver'
@@ -1101,7 +1100,7 @@
       }
     }
   }
-  setInterval(() => { if (online() && net.view && (net.view.turnDeadline || net.view.readyDeadline)) tickTimers(); }, 1000);
+  setInterval(() => { if (online() && net.view && net.view.turnDeadline) tickTimers(); }, 1000);
 
   // Zvuky podle toho, co se ve hře změnilo od minulého vykreslení.
   let lastSig = null;
