@@ -565,7 +565,8 @@
           ${row(t('row_cards'), fmt(t0.cardsPts), fmt(t1.cardsPts))}
           ${row(t('row_canastas', { a: t0.canastas, b: t1.canastas }), fmt(t0.canastaPts), fmt(t1.canastaPts))}
           ${row(t('row_red3', { a: t0.red3, b: t1.red3 }), fmt(t0.red3Pts), fmt(t1.red3Pts))}
-          ${row(t('row_capture'), fmt(t0.capturePts), fmt(t1.capturePts))}
+          ${row(t('row_capture'), fmt(t0.capturePts - (t0.capture3Pts || 0)), fmt(t1.capturePts - (t1.capture3Pts || 0)))}
+          ${(t0.capture3 || t1.capture3) ? row(t('row_capture3', { n: (t0.capture3 || 0) + (t1.capture3 || 0) }), fmt(t0.capture3Pts || 0), fmt(t1.capture3Pts || 0)) : ''}
           ${(t0.closePts || t1.closePts) ? row(t('row_close'), fmt(t0.closePts || 0), fmt(t1.closePts || 0)) : ''}
           ${(t0.cutPts || t1.cutPts) ? row(t('row_cut'), fmt(t0.cutPts || 0), fmt(t1.cutPts || 0)) : ''}
           ${row(t('row_round'), fmt(t0.total), fmt(t1.total), 'sum')}

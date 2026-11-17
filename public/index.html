@@ -1438,13 +1438,14 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
       }
       const red3Pts = canastas > 0 ? t.red3.length * 100 : 0;
       let capturePts = 0;
+      let capture3 = 0; // černé trojky soupeře v ruce (každá za 100), v souhrnu zvlášť
       if (closer === ti) {
-        for (const p of st.players) if (p.team !== ti) for (const c of p.hand) capturePts += captureValue(c);
+        for (const p of st.players) if (p.team !== ti) for (const c of p.hand) { capturePts += captureValue(c); if (isThree(c)) capture3++; }
       }
       const cutPts = st.cutInfo && st.cutInfo.hit && st.cutInfo.team === ti && st.cutInfo.round === st.round ? RULES.cutBonus : 0;
       const closePts = closer === ti ? RULES.closeBonus : 0; // za zavření kola
       const total = cardsPts + canastaPts + red3Pts + capturePts + closePts + cutPts;
-      return { cardsPts, canastaPts, canastas, red3: t.red3.length, red3Pts, capturePts, closePts, cutPts, total };
+      return { cardsPts, canastaPts, canastas, red3: t.red3.length, red3Pts, capturePts, capture3, capture3Pts: capture3 * 100, closePts, cutPts, total };
     });
     // body za sejmutí se připsaly hned na začátku kola
     res.forEach((r, i) => { st.teams[i].score += r.total - r.cutPts; });
@@ -2159,6 +2160,7 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
     app_windows: "Klikni na ikonu instalace vpravo v adresním řádku. Případně v nabídce prohlížeče najdi „Aplikace“ nebo „Uložit a sdílet“ a zvol instalaci.",
     app_iphone_t: "iPhone a iPad (Safari)",
     app_installed_toast: "Hotovo, aplikace je nainstalovaná.",
+    row_capture3: "Černé trojky soupeře ({n})",
     row_close: "Za zavření",
     open_min_undo: "Na první vyložení máš {v} z {min} bodů. Přidej karty, nebo odhoď a vyložení vezmi zpět.",
     no_lay_after_fail: "Po nepovedeném prvním vyložení už v tomhle tahu nevykládáš. Jen odhoď kartu.",
@@ -2666,6 +2668,7 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
     app_windows: "Click the install icon on the right of the address bar. Or look for “Apps” or “Save and share” in the browser menu and choose install.",
     app_iphone_t: "iPhone and iPad (Safari)",
     app_installed_toast: "Done, the app is installed.",
+    row_capture3: "Opponents’ black threes ({n})",
     row_close: "Going out",
     open_min_undo: "Your first meld has {v} of {min} points. Meld more, or discard and take the meld back.",
     no_lay_after_fail: "After a failed first meld you can't meld again this turn. Just discard.",
@@ -3173,6 +3176,7 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
     app_windows: "Clique no ícone de instalação à direita da barra de endereço. Ou procure “Apps” ou “Salvar e compartilhar” no menu do navegador e escolha instalar.",
     app_iphone_t: "iPhone e iPad (Safari)",
     app_installed_toast: "Pronto, o aplicativo está instalado.",
+    row_capture3: "Três pretos do adversário ({n})",
     row_close: "Batida",
     open_min_undo: "Sua primeira baixada tem {v} de {min} pontos. Baixe mais, ou descarte e recolha a baixada.",
     no_lay_after_fail: "Depois de uma baixada que não valeu você não baixa mais nesta jogada. Só descarte.",
@@ -4161,7 +4165,8 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
           ${row(t('row_cards'), fmt(t0.cardsPts), fmt(t1.cardsPts))}
           ${row(t('row_canastas', { a: t0.canastas, b: t1.canastas }), fmt(t0.canastaPts), fmt(t1.canastaPts))}
           ${row(t('row_red3', { a: t0.red3, b: t1.red3 }), fmt(t0.red3Pts), fmt(t1.red3Pts))}
-          ${row(t('row_capture'), fmt(t0.capturePts), fmt(t1.capturePts))}
+          ${row(t('row_capture'), fmt(t0.capturePts - (t0.capture3Pts || 0)), fmt(t1.capturePts - (t1.capture3Pts || 0)))}
+          ${(t0.capture3 || t1.capture3) ? row(t('row_capture3', { n: (t0.capture3 || 0) + (t1.capture3 || 0) }), fmt(t0.capture3Pts || 0), fmt(t1.capture3Pts || 0)) : ''}
           ${(t0.closePts || t1.closePts) ? row(t('row_close'), fmt(t0.closePts || 0), fmt(t1.closePts || 0)) : ''}
           ${(t0.cutPts || t1.cutPts) ? row(t('row_cut'), fmt(t0.cutPts || 0), fmt(t1.cutPts || 0)) : ''}
           ${row(t('row_round'), fmt(t0.total), fmt(t1.total), 'sum')}

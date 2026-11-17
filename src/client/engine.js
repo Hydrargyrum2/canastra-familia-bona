@@ -684,13 +684,14 @@
       }
       const red3Pts = canastas > 0 ? t.red3.length * 100 : 0;
       let capturePts = 0;
+      let capture3 = 0; // černé trojky soupeře v ruce (každá za 100), v souhrnu zvlášť
       if (closer === ti) {
-        for (const p of st.players) if (p.team !== ti) for (const c of p.hand) capturePts += captureValue(c);
+        for (const p of st.players) if (p.team !== ti) for (const c of p.hand) { capturePts += captureValue(c); if (isThree(c)) capture3++; }
       }
       const cutPts = st.cutInfo && st.cutInfo.hit && st.cutInfo.team === ti && st.cutInfo.round === st.round ? RULES.cutBonus : 0;
       const closePts = closer === ti ? RULES.closeBonus : 0; // za zavření kola
       const total = cardsPts + canastaPts + red3Pts + capturePts + closePts + cutPts;
-      return { cardsPts, canastaPts, canastas, red3: t.red3.length, red3Pts, capturePts, closePts, cutPts, total };
+      return { cardsPts, canastaPts, canastas, red3: t.red3.length, red3Pts, capturePts, capture3, capture3Pts: capture3 * 100, closePts, cutPts, total };
     });
     // body za sejmutí se připsaly hned na začátku kola
     res.forEach((r, i) => { st.teams[i].score += r.total - r.cutPts; });
