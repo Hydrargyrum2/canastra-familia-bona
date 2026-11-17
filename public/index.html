@@ -762,7 +762,7 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
   const ORDER = ['4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A']; // 4 nejnižší, eso nejvyšší
   const SET_RANKS = ['K', 'A', '4'];
   const M = (k, p) => ({ k, p: p || {} }); // zpráva pro překlad: klíč + parametry
-  const RULES = { target: 4000, openThreshold: 2000, openMin: 150, openStep: 50, handSize: 13, canasta: 7, cutBonus: 100, cutJitter: 2 };
+  const RULES = { target: 4000, openThreshold: 2000, openMin: 150, openStep: 50, closeBonus: 100, handSize: 13, canasta: 7, cutBonus: 100, cutJitter: 2 };
 
   // ---------- karty ----------
   function makeDeck() {
@@ -1442,8 +1442,9 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
         for (const p of st.players) if (p.team !== ti) for (const c of p.hand) capturePts += captureValue(c);
       }
       const cutPts = st.cutInfo && st.cutInfo.hit && st.cutInfo.team === ti && st.cutInfo.round === st.round ? RULES.cutBonus : 0;
-      const total = cardsPts + canastaPts + red3Pts + capturePts + cutPts;
-      return { cardsPts, canastaPts, canastas, red3: t.red3.length, red3Pts, capturePts, cutPts, total };
+      const closePts = closer === ti ? RULES.closeBonus : 0; // za zavření kola
+      const total = cardsPts + canastaPts + red3Pts + capturePts + closePts + cutPts;
+      return { cardsPts, canastaPts, canastas, red3: t.red3.length, red3Pts, capturePts, closePts, cutPts, total };
     });
     // body za sejmutí se připsaly hned na začátku kola
     res.forEach((r, i) => { st.teams[i].score += r.total - r.cutPts; });
@@ -1965,7 +1966,7 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
     log_title: 'Co se stalo',
     res_stock_out: 'Balíček došel',
     res_stock_out_lead: 'Karty v ruce propadají, počítá se jen to, co je na stole.',
-    res_out_lead: 'Kdo zavřel, dostává body za karty v ruce soupeře.',
+    res_out_lead: 'Kdo zavřel, dostává 100 bodů a body za karty v ruce soupeře.',
     out_me: 'Zavřel jsi kolo', out_us: 'Váš tým zavřel kolo', out_opp: '{name} zavřel kolo', out_opps: 'Soupeři zavřeli kolo',
     win_me: 'Vyhrál jsi!', win_us: 'Vyhráli jste!', win_opp: '{name} vyhrál', win_opps: 'Soupeři vyhráli', draw_game: 'Remíza!',
     final_score: 'Konečné skóre {a} : {b}.',
@@ -2158,6 +2159,7 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
     app_windows: "Klikni na ikonu instalace vpravo v adresním řádku. Případně v nabídce prohlížeče najdi „Aplikace“ nebo „Uložit a sdílet“ a zvol instalaci.",
     app_iphone_t: "iPhone a iPad (Safari)",
     app_installed_toast: "Hotovo, aplikace je nainstalovaná.",
+    row_close: "Za zavření",
     open_min_undo: "Na první vyložení máš {v} z {min} bodů. Přidej karty, nebo odhoď a vyložení vezmi zpět.",
     no_lay_after_fail: "Po nepovedeném prvním vyložení už v tomhle tahu nevykládáš. Jen odhoď kartu.",
     retract_title: "Málo na první vyložení",
@@ -2211,7 +2213,7 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
     tut_s5_t: "Začátek kola",
     tut_s5: "Kdo kolo začíná, nejdřív sejme balíček. Když dole zůstane přesně tolik karet, kolik se rozdává (26, ve čtyřech 52), jeho tým dostane 100 bodů. Pak smí jednou vrátit první líznutou kartu na hromádku a líznout si jinou. Kdo začíná, se každé kolo střídá.",
     tut_s6_t: "Konec kola",
-    tut_s6: "Kolo zavřeš, když ti nezůstane žádná karta a máš aspoň jednu canastu. Kdo zavře, dostane i body za karty, které zůstaly soupeři v ruce. Teď si to zkus proti lehkému robotovi, nápověda ti poradí každý tah.",
+    tut_s6: "Kolo zavřeš, když ti nezůstane žádná karta a máš aspoň jednu canastu. Kdo zavře, dostane 100 bodů navíc a i body za karty, které zůstaly soupeři v ruce. Teď si to zkus proti lehkému robotovi, nápověda ti poradí každý tah.",
     pile_add_alone: "K vykládce na stole smíš z hromádky přiložit jen samotnou vrchní kartu, z ruky k ní nic. Zruš výběr karet a klepni na vykládku.",
     tut_s3: "Na začátku tahu si lízneš kartu z balíčku, nebo vezmeš celou hromádku. Hromádku můžeš vzít jen tehdy, když její vrchní kartu hned vyložíš s kartami z ruky, nebo ji samotnou přiložíš ke své vykládce. Pak vykládáš a nakonec jednu kartu odhodíš.",
     app_iphone: "Otevři hru v Safari (ne uvnitř WhatsAppu, Instagramu apod.). Klepni na ⋯ vedle adresy (u starších iOS na tlačítko Sdílet dole), pak Sdílet, sjeď dolů na „Přidat na plochu“, nech zapnuté „Otevřít jako webovou aplikaci“ a klepni na Přidat.",
@@ -2434,7 +2436,7 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
         <li>Karta 10, eso 20, dvojka a joker 50.</li>
         <li>Canasta 100. Čistá navíc +100 za každou kartu nad 7.</li>
         <li>Červená trojka 100, ale jen když máš canastu.</li>
-        <li>Kdo zavře, dostane body za karty v ruce soupeře. Černá trojka v jeho ruce je za 100.</li>
+        <li>Kdo zavře, dostane 100 bodů navíc a k tomu body za karty v ruce soupeře. Černá trojka v jeho ruce je za 100.</li>
         <li>Hraje se do 4 000.</li>
       </ul>`,
   };
@@ -2475,7 +2477,7 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
     log_title: 'What happened',
     res_stock_out: 'The stock ran out',
     res_stock_out_lead: 'Cards in hand are lost. Only cards on the table count.',
-    res_out_lead: 'Whoever went out scores the cards left in the opponents’ hands.',
+    res_out_lead: 'Whoever went out gets 100 points plus the cards left in the opponents’ hands.',
     out_me: 'You went out', out_us: 'Your team went out', out_opp: '{name} went out', out_opps: 'The opponents went out',
     win_me: 'You won!', win_us: 'Your team won!', win_opp: '{name} won', win_opps: 'The opponents won', draw_game: "It's a draw!",
     final_score: 'Final score {a} : {b}.',
@@ -2664,6 +2666,7 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
     app_windows: "Click the install icon on the right of the address bar. Or look for “Apps” or “Save and share” in the browser menu and choose install.",
     app_iphone_t: "iPhone and iPad (Safari)",
     app_installed_toast: "Done, the app is installed.",
+    row_close: "Going out",
     open_min_undo: "Your first meld has {v} of {min} points. Meld more, or discard and take the meld back.",
     no_lay_after_fail: "After a failed first meld you can't meld again this turn. Just discard.",
     retract_title: "Not enough for the first meld",
@@ -2717,7 +2720,7 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
     tut_s5_t: "Starting a round",
     tut_s5: "Whoever starts the round first cuts the deck. If exactly as many cards as are dealt stay at the bottom (26, or 52 with four players), their team gets 100 points. Then they may once put their first drawn card on the pile and draw another. The starting player changes every round.",
     tut_s6_t: "Ending a round",
-    tut_s6: "You go out when you have no cards left and at least one canasta. Whoever goes out also scores the cards left in the opponent's hand. Now try it against an easy bot, the tips will help you every turn.",
+    tut_s6: "You go out when you have no cards left and at least one canasta. Whoever goes out gets 100 extra points plus the cards left in the opponent's hand. Now try it against an easy bot, the tips will help you every turn.",
     pile_add_alone: "When adding to a meld on the table, you may only add the top card of the pile by itself, nothing from your hand. Clear your selection and tap the meld.",
     tut_s3: "Start your turn by drawing from the stock or taking the whole discard pile. You can only take the pile if you immediately meld its top card with cards from your hand, or add the top card alone to one of your melds. Then meld what you want and finally discard one card.",
     app_iphone: "Open the game in Safari (not inside WhatsApp, Instagram etc.). Tap ⋯ next to the address (on older iOS the Share button at the bottom), then Share, scroll down to “Add to Home Screen”, keep “Open as Web App” on and tap Add.",
@@ -2940,7 +2943,7 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
         <li>Cards 10, ace 20, two and joker 50.</li>
         <li>Canasta 100. A clean canasta adds +100 for every card above 7.</li>
         <li>Red three 100, but only if you have a canasta.</li>
-        <li>Whoever goes out scores the cards in the opponents’ hands. A black three there is worth 100.</li>
+        <li>Whoever goes out gets a 100-point bonus plus the cards in the opponents’ hands. A black three there is worth 100.</li>
         <li>First to 4,000 wins.</li>
       </ul>`,
   };
@@ -2981,7 +2984,7 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
     log_title: 'O que aconteceu',
     res_stock_out: 'O monte acabou',
     res_stock_out_lead: 'As cartas na mão não contam. Só vale o que está na mesa.',
-    res_out_lead: 'Quem bateu ganha os pontos das cartas na mão dos adversários.',
+    res_out_lead: 'Quem bateu ganha 100 pontos e os pontos das cartas na mão dos adversários.',
     out_me: 'Você bateu', out_us: 'Sua dupla bateu', out_opp: '{name} bateu', out_opps: 'Os adversários bateram',
     win_me: 'Você venceu!', win_us: 'Vocês venceram!', win_opp: '{name} venceu', win_opps: 'Os adversários venceram', draw_game: 'Empate!',
     final_score: 'Placar final {a} : {b}.',
@@ -3170,6 +3173,7 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
     app_windows: "Clique no ícone de instalação à direita da barra de endereço. Ou procure “Apps” ou “Salvar e compartilhar” no menu do navegador e escolha instalar.",
     app_iphone_t: "iPhone e iPad (Safari)",
     app_installed_toast: "Pronto, o aplicativo está instalado.",
+    row_close: "Batida",
     open_min_undo: "Sua primeira baixada tem {v} de {min} pontos. Baixe mais, ou descarte e recolha a baixada.",
     no_lay_after_fail: "Depois de uma baixada que não valeu você não baixa mais nesta jogada. Só descarte.",
     retract_title: "Pouco para a primeira baixada",
@@ -3223,7 +3227,7 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
     tut_s5_t: "Começo da rodada",
     tut_s5: "Quem começa a rodada primeiro corta o baralho. Se ficarem embaixo exatamente as cartas que se distribuem (26, ou 52 com quatro jogadores), a dupla ganha 100 pontos. Depois pode, uma vez, pôr a primeira carta comprada no lixo e comprar outra. Quem começa muda a cada rodada.",
     tut_s6_t: "Fim da rodada",
-    tut_s6: "Você bate quando fica sem cartas e tem pelo menos uma canastra. Quem bate ganha também os pontos das cartas que ficaram na mão do adversário. Agora experimente contra um robô fácil, as dicas vão ajudar em cada jogada.",
+    tut_s6: "Você bate quando fica sem cartas e tem pelo menos uma canastra. Quem bate ganha 100 pontos a mais e também os pontos das cartas que ficaram na mão do adversário. Agora experimente contra um robô fácil, as dicas vão ajudar em cada jogada.",
     pile_add_alone: "Para encaixar num jogo da mesa, só a carta de cima do lixo pode ir sozinha, nada da mão. Desmarque as cartas e toque no jogo.",
     tut_s3: "No começo da vez você compra do monte ou pega o lixo inteiro. Só dá para pegar o lixo se você baixar a carta de cima na hora com cartas da mão, ou encaixar só ela num jogo seu. Depois baixe o que quiser e, no fim, descarte uma carta.",
     app_iphone: "Abra o jogo no Safari (não dentro do WhatsApp, Instagram etc.). Toque em ⋯ ao lado do endereço (em iOS mais antigo, no botão Compartilhar embaixo), depois Compartilhar, role até “Adicionar à Tela de Início”, deixe “Abrir como app web” ligado e toque em Adicionar.",
@@ -3446,7 +3450,7 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
         <li>Carta 10, ás 20, dois e joker 50.</li>
         <li>Canastra 100. A limpa ganha +100 por carta acima de 7.</li>
         <li>Três vermelho 100, mas só se você tiver canastra.</li>
-        <li>Quem bate ganha os pontos das cartas na mão dos adversários. Um três preto ali vale 100.</li>
+        <li>Quem bate ganha 100 pontos de bônus e mais os pontos das cartas na mão dos adversários. Um três preto ali vale 100.</li>
         <li>Vence quem chegar a 4.000.</li>
       </ul>`,
   };
@@ -4158,6 +4162,7 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
           ${row(t('row_canastas', { a: t0.canastas, b: t1.canastas }), fmt(t0.canastaPts), fmt(t1.canastaPts))}
           ${row(t('row_red3', { a: t0.red3, b: t1.red3 }), fmt(t0.red3Pts), fmt(t1.red3Pts))}
           ${row(t('row_capture'), fmt(t0.capturePts), fmt(t1.capturePts))}
+          ${(t0.closePts || t1.closePts) ? row(t('row_close'), fmt(t0.closePts || 0), fmt(t1.closePts || 0)) : ''}
           ${(t0.cutPts || t1.cutPts) ? row(t('row_cut'), fmt(t0.cutPts || 0), fmt(t1.cutPts || 0)) : ''}
           ${row(t('row_round'), fmt(t0.total), fmt(t1.total), 'sum')}
           ${row(t('row_total'), fmt(st.teams[u].score), fmt(st.teams[th].score), 'tot')}

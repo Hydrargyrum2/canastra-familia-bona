@@ -8,7 +8,7 @@
   const ORDER = ['4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A']; // 4 nejnižší, eso nejvyšší
   const SET_RANKS = ['K', 'A', '4'];
   const M = (k, p) => ({ k, p: p || {} }); // zpráva pro překlad: klíč + parametry
-  const RULES = { target: 4000, openThreshold: 2000, openMin: 150, openStep: 50, handSize: 13, canasta: 7, cutBonus: 100, cutJitter: 2 };
+  const RULES = { target: 4000, openThreshold: 2000, openMin: 150, openStep: 50, closeBonus: 100, handSize: 13, canasta: 7, cutBonus: 100, cutJitter: 2 };
 
   // ---------- karty ----------
   function makeDeck() {
@@ -688,8 +688,9 @@
         for (const p of st.players) if (p.team !== ti) for (const c of p.hand) capturePts += captureValue(c);
       }
       const cutPts = st.cutInfo && st.cutInfo.hit && st.cutInfo.team === ti && st.cutInfo.round === st.round ? RULES.cutBonus : 0;
-      const total = cardsPts + canastaPts + red3Pts + capturePts + cutPts;
-      return { cardsPts, canastaPts, canastas, red3: t.red3.length, red3Pts, capturePts, cutPts, total };
+      const closePts = closer === ti ? RULES.closeBonus : 0; // za zavření kola
+      const total = cardsPts + canastaPts + red3Pts + capturePts + closePts + cutPts;
+      return { cardsPts, canastaPts, canastas, red3: t.red3.length, red3Pts, capturePts, closePts, cutPts, total };
     });
     // body za sejmutí se připsaly hned na začátku kola
     res.forEach((r, i) => { st.teams[i].score += r.total - r.cutPts; });
