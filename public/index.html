@@ -4285,12 +4285,19 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
       key: (online() ? 'o' + net.code : 'l') + ':' + mode + ':' + st.round + ':' + st.phase.replace('play', 'draw'),
       hand: new Set(myHand().map((c) => c.id)), melds, top: top ? top.id : null, current: st.current,
       log: JSON.stringify(last) + '#' + st.log.length, last,
+      pile: st.pile.slice(-7).map((c) => ({ id: c.id, r: c.r, s: c.s })),
     };
   }
+  // místo hráče jako malá karta uprostřed jeho vějíře (ne celá šířka vějíře)
+  function cardBox(r, w) {
+    if (!r) return null;
+    const h = w * 1.42;
+    return { left: r.left + r.width / 2 - w / 2, top: r.top + r.height / 2 - h / 2, width: w, height: h };
+  }
   function seatRect(i) {
-    if (i === ME) return rectOf($('#hand'));
+    if (i === ME) return cardBox(rectOf($('#hand')), 54);
     const el = document.querySelector(`#oppSeat [data-seat="${i}"] .arc, .partner[data-seat="${i}"], [data-seat="${i}"]`);
-    return rectOf(el) || rectOf($('#oppSeat'));
+    return cardBox(rectOf(el) || rectOf($('#oppSeat')), 26);
   }
   function fly(html, from, to, delay, hideEl) {
     if (!from || !to || !from.width || !to.width) return;
@@ -4352,8 +4359,10 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
       if (pi === ME) {
         newInHand.forEach((id, i) => { const e = handEl(id); if (e) fly(e.querySelector('.card').outerHTML, snap.pile, rectOf(e.querySelector('.card')), 120 + 45 * i, e); });
       } else {
-        const n = Math.min(6, Math.max(1, (L.p.n || 2) - 1));
-        for (let i = 0; i < n; i++) fly(backFace(), snap.pile, seatRect(pi), 120 + 70 * i, null);
+        // karty z hromádky (jsou vidět všem) odjedou k soupeři, vrchní šla do vykládky
+        const rest = prev.pile.filter((c) => c.id !== prev.top).slice(-6).reverse();
+        if (!rest.length) fly(backFace(), snap.pile, seatRect(pi), 120, null);
+        rest.forEach((c, i) => fly(cardFace(c), snap.pile, seatRect(pi), 120 + 80 * i, null));
       }
     }
   }
