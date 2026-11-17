@@ -38,7 +38,7 @@
   let botTimer = null;
   let toastTimer = null;
   let botFails = 0;
-  let prefs = { lang: detectLang(), level: 'hard', music: true, musicVol: 35, sfx: true, sfxVol: 70, vibrate: true, track: 0, push: false };
+  let prefs = { lang: detectLang(), level: 'hard', handSort: 'suit', music: true, musicVol: 35, sfx: true, sfxVol: 70, vibrate: true, track: 0, push: false };
   const S = window.Sound || { configure() {}, sfx() {}, vibrate() {}, next() {}, TRACKS: [], track: 0, canVibrate: false };
   const soundPrefs = () => ({ music: prefs.music, musicVol: prefs.musicVol, sfx: prefs.sfx, sfxVol: prefs.sfxVol, vibrate: prefs.vibrate, track: prefs.track });
   let pending = null; // vykládka čekající na volbu, kam dát žolíka
@@ -114,6 +114,7 @@
         for (const k of ['music', 'sfx', 'vibrate', 'push']) if (typeof p[k] === 'boolean') prefs[k] = p[k];
         for (const k of ['musicVol', 'sfxVol']) if (typeof p[k] === 'number' && p[k] >= 0 && p[k] <= 100) prefs[k] = p[k];
         if (typeof p.track === 'number') prefs.track = p.track;
+        if (p.handSort === 'rank' || p.handSort === 'suit') prefs.handSort = p.handSort;
       }
     } catch (e) { /* bez úložiště */ }
   }
@@ -131,7 +132,91 @@
     if (E.isWild(c)) return 1000 + (c.r === 'JK' ? 10 : SUIT_ORDER[c.s]);
     return SUIT_ORDER[c.s] * 20 + E.pos(c);
   }
-  const sortHand = (h) => h.slice().sort((a, b) => sortKey(a) - sortKey(b) || a.id - b.id);
+  function rankKey(c) {
+    if (E.isThree(c)) return -100 + SUIT_ORDER[c.s];
+    if (E.isWild(c)) return 1000 + (c.r === 'JK' ? 10 : SUIT_ORDER[c.s]);
+    return E.pos(c) * 4 + SUIT_ORDER[c.s];
+  }
+  const sortHand = (h) => {
+    const k = prefs.handSort === 'rank' ? rankKey : sortKey;
+    return h.slice().sort((a, b) => k(a) - k(b) || a.id - b.id);
+  };
+
+  // ---------- vlastní pořadí karet v ruce ----------
+  // Dokud hráč karty nepřeskládá, řadí se samy. Po přeskládání se nové karty vkládají tam,
+  // kam podle jeho systému nejlíp sedí (barva a návaznost, stejná hodnota, žolíci, trojky).
+  const HAND_KEY = 'canastra-bona-ruka';
+  let hand = { key: '', ids: [], manual: false };
+  try { const h0 = JSON.parse(localStorage.getItem(HAND_KEY) || 'null'); if (h0 && Array.isArray(h0.ids)) hand = h0; } catch (e) { /* bez úložiště */ }
+  const saveHand = () => { try { localStorage.setItem(HAND_KEY, JSON.stringify(hand)); } catch (e) { /* bez úložiště */ } };
+  function handStyle(cards) {
+    // směr řazení v rámci barvy podle toho, jak to má hráč srovnané
+    let up = 0;
+    let down = 0;
+    for (let i = 1; i < cards.length; i++) {
+      const a = cards[i - 1];
+      const b = cards[i];
+      if (E.isWild(a) || E.isWild(b) || E.isThree(a) || E.isThree(b) || a.s !== b.s) continue;
+      if (E.pos(b) > E.pos(a)) up++; else if (E.pos(b) < E.pos(a)) down++;
+    }
+    return down > up ? -1 : 1;
+  }
+  function affinity(a, b, dir) {
+    if (!a || !b) return 0;
+    const wa = E.isWild(a);
+    const wb = E.isWild(b);
+    if (wa || wb) return wa && wb ? 2 : 0;
+    const ta = E.isThree(a);
+    const tb = E.isThree(b);
+    if (ta || tb) return ta && tb ? 2 : 0;
+    if (a.s === b.s) {
+      const d = (E.pos(b) - E.pos(a)) * dir;
+      if (d === 1) return 3;
+      if (d === 2) return 2.2;
+      if (d === -1) return 2;
+      if (d === 0) return 2.4;
+      return 1;
+    }
+    return a.r === b.r ? 2.5 : 0;
+  }
+  function bestSlot(list, c, dir) {
+    let best = list.length;
+    let bestScore = 0;
+    for (let i = 0; i <= list.length; i++) {
+      const L = list[i - 1];
+      const R = list[i];
+      const sc = affinity(L, c, dir) + affinity(c, R, dir) - (L && R ? affinity(L, R, dir) * 0.9 : 0);
+      if (sc > bestScore + 1e-9) { bestScore = sc; best = i; }
+    }
+    return best;
+  }
+  function orderedHand() {
+    const h = myHand();
+    const key = (online() ? net.code : 'local') + ':' + mode + ':' + ME;
+    if (hand.key !== key) { hand = { key, ids: [], manual: false }; }
+    const byId = new Map(h.map((c) => [c.id, c]));
+    const kept = hand.ids.filter((id) => byId.has(id));
+    // nové rozdání (skoro celá ruka je nová): znovu automaticky
+    if (!hand.manual || kept.length < h.length / 2) {
+      const auto = sortHand(h);
+      hand.manual = hand.manual && kept.length >= h.length / 2;
+      hand.ids = auto.map((c) => c.id);
+      return auto;
+    }
+    const known = new Set(kept);
+    const list = kept.map((id) => byId.get(id));
+    const dir = handStyle(list);
+    for (const c of sortHand(h.filter((x) => !known.has(x.id)))) list.splice(bestSlot(list, c, dir), 0, c);
+    hand.ids = list.map((c) => c.id);
+    return list;
+  }
+  function moveCard(id, toIndex) {
+    const ids = orderedHand().map((c) => c.id).filter((x) => x !== id);
+    ids.splice(Math.max(0, Math.min(ids.length, toIndex)), 0, id);
+    hand.ids = ids;
+    hand.manual = true;
+    saveHand();
+  }
 
   function cardFace(c, style) {
     const st2 = style ? ` style="${style}"` : '';
@@ -325,15 +410,16 @@
   function handHTML() {
     const mineNow = st.current === ME;
     const newIds = mineNow && st.turn ? st.turn.newIds || [] : [];
-    return sortHand(myHand()).map((c) => {
-      const cls = [sel.has(c.id) ? 'sel' : '', newIds.includes(c.id) ? 'new' : ''].join(' ');
+    return orderedHand().map((c) => {
+      const cls = [sel.has(c.id) ? 'sel' : '', newIds.includes(c.id) ? 'new' : '', drag && drag.active && drag.id === c.id ? 'dragging' : ''].join(' ');
       return `<button class="hc ${cls}" data-card="${c.id}" aria-pressed="${sel.has(c.id)}">${cardFace(c)}</button>`;
     }).join('');
   }
   function handHeadHTML() {
     const h = myHand();
     const val = sel.size ? h.filter((c) => sel.has(c.id)).reduce((s, c) => s + E.cardValue(c), 0) : 0;
-    return `<span>${esc(t('your_cards', { n: h.length }))}</span><span class="grow"></span>${sel.size ? `<span>${esc(t('selected', { n: sel.size, v: val }))}</span> <button class="linkbtn" data-act="clearsel">${esc(t('clear'))}</button>` : ''}`;
+    const sortBtn = h.length > 1 ? `<button class="sortbtn" data-act="handsort" title="${esc(t('sort_hint'))}">⇅ ${esc(t(hand.manual ? 'sort_reset' : prefs.handSort === 'rank' ? 'sort_rank' : 'sort_suit'))}</button>` : '';
+    return `<span>${esc(t('your_cards', { n: h.length }))}</span>${sortBtn}<span class="grow"></span>${sel.size ? `<span>${esc(t('selected', { n: sel.size, v: val }))}</span> <button class="linkbtn" data-act="clearsel">${esc(t('clear'))}</button>` : ''}`;
   }
 
   function actionsHTML() {
@@ -960,7 +1046,7 @@
     $('#status').innerHTML = statusHTML();
     $('#handwrap').classList.toggle('myturn', !!myTurn());
     $('#hhead').innerHTML = handHeadHTML();
-    $('#hand').innerHTML = handHTML();
+    if (!(drag && drag.active)) $('#hand').innerHTML = handHTML();
     $('#actions').innerHTML = actionsHTML();
     renderCoach();
     renderOverlay();
@@ -1610,6 +1696,12 @@
       case 'openround': overlay = 'round'; break;
       case 'openroom': overlay = 'room'; break;
       case 'clearsel': sel.clear(); break;
+      case 'handsort':
+        if (hand.manual) hand.manual = false;
+        else { prefs.handSort = prefs.handSort === 'rank' ? 'suit' : 'rank'; savePrefs(); }
+        saveHand();
+        toast(t(prefs.handSort === 'rank' ? 'sorted_rank' : 'sorted_suit'), 'info');
+        break;
       case 'tostart': nav = []; overlay = 'start'; if (net.user) refreshMe().then(render); break;
       case 'lang':
         if (LANGS.includes(v)) { prefs.lang = v; savePrefs(); syncPush(); }
@@ -1749,6 +1841,7 @@
       return;
     }
     const c = ev.target.closest('[data-card]');
+    if (c && suppressClick) { suppressClick = false; return; }
     if (c) {
       const id = Number(c.dataset.card);
       if (sel.has(id)) sel.delete(id); else sel.add(id);
@@ -1766,6 +1859,98 @@
       schedule();
     }
   });
+
+  // ---------- přetahování karet v ruce ----------
+  let drag = null;
+  let suppressClick = false;
+  function dropTarget(x, y) {
+    const els = Array.from(document.querySelectorAll('#hand .hc')).filter((e) => Number(e.dataset.card) !== drag.id);
+    let best = null;
+    let bestD = Infinity;
+    els.forEach((e, i) => {
+      const r = e.getBoundingClientRect();
+      const cx = r.left + r.width / 2;
+      const cy = r.top + r.height / 2;
+      const d = Math.hypot((x - cx) * 1, (y - cy) * 1.6);
+      if (d < bestD) { bestD = d; best = { el: e, index: i, after: x > cx }; }
+    });
+    return best;
+  }
+  function clearMarks() {
+    document.querySelectorAll('#hand .drop-before, #hand .drop-after').forEach((e) => e.classList.remove('drop-before', 'drop-after'));
+  }
+  function activateDrag(x, y) {
+    drag.active = true;
+    clearTimeout(drag.timer);
+    const r = drag.el.getBoundingClientRect();
+    const g = drag.el.cloneNode(true);
+    g.className = 'hc drag-ghost';
+    g.style.width = r.width + 'px';
+    g.style.left = r.left + 'px';
+    g.style.top = r.top + 'px';
+    document.body.appendChild(g);
+    drag.ghost = g;
+    drag.ox = drag.x0 - r.left;
+    drag.oy = drag.y0 - r.top;
+    drag.el.classList.add('dragging');
+    try { drag.el.setPointerCapture(drag.pid); } catch (e) { /* nic */ }
+    moveGhost(x, y);
+  }
+  function moveGhost(x, y) {
+    drag.ghost.style.left = (x - drag.ox) + 'px';
+    drag.ghost.style.top = (y - drag.oy) + 'px';
+    clearMarks();
+    const tg = dropTarget(x, y);
+    if (tg) tg.el.classList.add(tg.after ? 'drop-after' : 'drop-before');
+  }
+  document.addEventListener('pointerdown', (ev) => {
+    const c = ev.target.closest('#hand .hc');
+    if (!c || (ev.pointerType === 'mouse' && ev.button !== 0)) return;
+    if (drag && drag.timer) clearTimeout(drag.timer);
+    drag = { id: Number(c.dataset.card), x0: ev.clientX, y0: ev.clientY, pid: ev.pointerId, type: ev.pointerType, active: false, el: c };
+    // prstem: podržet kartu a pak s ní jde hýbat i nahoru a dolů
+    if (ev.pointerType !== 'mouse') {
+      drag.timer = setTimeout(() => {
+        if (drag && !drag.active && drag.el.isConnected) { activateDrag(drag.x0, drag.y0); S.vibrate(15); }
+      }, 320);
+    }
+  });
+  document.addEventListener('pointermove', (ev) => {
+    if (!drag || ev.pointerId !== drag.pid) return;
+    const dx = ev.clientX - drag.x0;
+    const dy = ev.clientY - drag.y0;
+    if (!drag.active) {
+      if (Math.hypot(dx, dy) < 10) return;
+      // prstem rychle nahoru nebo dolů = posouvání ruky, ne přesun karty
+      if (drag.type !== 'mouse' && Math.abs(dy) > Math.abs(dx)) { clearTimeout(drag.timer); drag = null; return; }
+      activateDrag(ev.clientX, ev.clientY);
+    }
+    ev.preventDefault();
+    moveGhost(ev.clientX, ev.clientY);
+  }, { passive: false });
+  // když se karta táhne, stránka ani ruka se nesmí posouvat
+  document.addEventListener('touchmove', (ev) => { if (drag && drag.active && ev.cancelable) ev.preventDefault(); }, { passive: false });
+  document.addEventListener('contextmenu', (ev) => { if (ev.target.closest && ev.target.closest('#hand .hc')) ev.preventDefault(); });
+  function endDrag(ev, cancel) {
+    if (!drag || (ev && ev.pointerId !== drag.pid)) return;
+    const d = drag;
+    clearTimeout(d.timer);
+    if (d.active) {
+      const tg = !cancel && ev ? dropTarget(ev.clientX, ev.clientY) : null;
+      if (d.ghost) d.ghost.remove();
+      clearMarks();
+      drag = null;
+      // potlačit jen klik, který prohlížeč pošle hned po puštění karty
+      suppressClick = true;
+      setTimeout(() => { suppressClick = false; }, 0);
+      if (tg) { moveCard(d.id, tg.index + (tg.after ? 1 : 0)); S.sfx('card'); }
+      render();
+      return;
+    }
+    drag = null;
+  }
+  document.addEventListener('pointerup', (ev) => endDrag(ev, false));
+  document.addEventListener('pointercancel', (ev) => endDrag(ev, true));
 
   document.addEventListener('submit', (ev) => {
     const f = ev.target;

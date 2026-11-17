@@ -43,6 +43,7 @@ První zaregistrovaný účet je správce (může resetovat zapomenutá hesla).
 | `tools/servertest*.mjs` | Testy serveru (spustit proti `npx wrangler dev`) |
 | `tools/e2e.py` | Test ve dvou prohlížečích (Playwright) |
 | `tools/pwatest.py` | Test instalovatelné aplikace a offline režimu |
+| `tools/handtest.py` | Test přeskládání karet v ruce |
 | `tools/uitest.py` | Test menu, přátel, profilu, výuky a odpočtu ve třech prohlížečích |
 | `tools/icons.py` | Vyrobí ikony aplikace |
 

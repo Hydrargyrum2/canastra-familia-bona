@@ -602,3 +602,11 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
 .tutcards .sep { width: 14px; }
 
 .avprev { display: grid; place-items: center; margin: 4px 0 8px; }
+
+/* ---------- přeskládání karet ---------- */
+.hc { touch-action: pan-y; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+.hc.dragging { opacity: 0.25; }
+.hc.drop-before .card { box-shadow: -5px 0 0 0 var(--brass); }
+.hc.drop-after .card { box-shadow: 5px 0 0 0 var(--brass); }
+.drag-ghost { position: fixed; z-index: 60; margin: 0; pointer-events: none; transform: rotate(-4deg) scale(1.08); filter: drop-shadow(0 10px 16px rgba(0,0,0,0.5)); transition: none; }
+.sortbtn { margin-left: 4px; padding: 3px 9px; border-radius: 10px; border: 1px solid var(--line); background: rgba(255,255,255,0.06); color: #e6efec; font: inherit; font-size: 11px; letter-spacing: 0.04em; text-transform: none; cursor: pointer; }
