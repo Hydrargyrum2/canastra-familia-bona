@@ -153,7 +153,7 @@ button:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
 
 /* polovina stolu každého hráče */
 .zone {
-  flex: 1 1 0; min-height: 0; overflow-y: auto;
+  flex: 1 1 0; min-height: 0; overflow-y: auto; touch-action: pan-x pan-y; /* dva prsty mění velikost karet, ne stránku */
   padding: 6px 16px;
 }
 .zone.opp { border-bottom: 1px dashed rgba(234,246,240,0.10); }
@@ -171,7 +171,8 @@ button:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
 .mhead { flex-wrap: wrap; }
 
 .meld {
-  --cw: 54px; /* stejně velké jako balíček a hromádka */
+  --cwb: 54px; /* stejně velké jako balíček a hromádka */
+  --cw: calc(var(--cwb) * var(--mz, 1)); /* --mz: zvětšení/zmenšení stolu (tlačítka −/+ nebo dva prsty) */
   position: relative;
   display: inline-flex; align-items: flex-end;
   padding: 6px 8px 6px 6px; border-radius: 10px;
@@ -368,7 +369,8 @@ table.res tr.tot td:nth-child(2) { color: var(--brass); }
 #handwrap.myturn { border-top-color: var(--brass); }
 @media (min-width: 420px) { :root { --cw: 54px; } }
 @media (max-width: 480px) {
-  .meld, .stack, .picks { --cw: 44px; } /* na mobilu menší, ale vykládky pořád stejně velké jako balíček */
+  .stack, .picks { --cw: 44px; }
+  .meld { --cwb: 44px; } /* na mobilu menší, ale vykládky pořád stejně velké jako balíček */
   .seat:not(.small) { grid-auto-flow: column; align-items: center; gap: 10px; }
   .seat-top { padding: 4px 12px 0; }
   .arc { height: 34px; }
@@ -712,6 +714,14 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
 .cutres.hit b { color: var(--brass); text-shadow: 0 0 18px rgba(241,195,76,.55); }
 .cutres span { color: var(--muted); font-size: 13px; margin-top: 4px; }
 .btn.redraw { flex: 0 0 auto; }
+
+/* velikost karet na stole */
+.zoom { display: inline-flex; align-items: center; gap: 2px; margin-left: 4px; padding: 1px; border-radius: 12px; border: 1px solid var(--line); background: rgba(0,0,0,.18); text-transform: none; letter-spacing: 0; }
+.zoom .zb { width: 26px; height: 22px; border: 0; border-radius: 10px; background: transparent; color: #d7e6e1; font: 700 15px/1 var(--font-body); cursor: pointer; }
+.zoom .zb:hover:not(:disabled) { background: rgba(255,255,255,.08); }
+.zoom .zb:disabled { opacity: .35; cursor: default; }
+.zoom .zi { font-size: 11px; opacity: .8; }
+.meld { padding: calc(6px * var(--mz, 1)) calc(8px * var(--mz, 1)) calc(6px * var(--mz, 1)) calc(6px * var(--mz, 1)); }
 
 </style>
 </head>
@@ -2109,6 +2119,9 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
     app_windows: "Klikni na ikonu instalace vpravo v adresním řádku. Případně v nabídce prohlížeče najdi „Aplikace“ nebo „Uložit a sdílet“ a zvol instalaci.",
     app_iphone_t: "iPhone a iPad (Safari)",
     app_installed_toast: "Hotovo, aplikace je nainstalovaná.",
+    zoom_label: "Velikost karet na stole",
+    zoom_out: "Zmenšit karty",
+    zoom_in: "Zvětšit karty",
     draw_first_add: "Nejdřív si lízni z balíčku. Z ruky můžeš přikládat až potom.",
     log_cut_wait: "{name} snímá balíček.",
     log_cut_wait_you: "Začínáš kolo. Sejmi balíček.",
@@ -2599,6 +2612,9 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
     app_windows: "Click the install icon on the right of the address bar. Or look for “Apps” or “Save and share” in the browser menu and choose install.",
     app_iphone_t: "iPhone and iPad (Safari)",
     app_installed_toast: "Done, the app is installed.",
+    zoom_label: "Card size on the table",
+    zoom_out: "Smaller cards",
+    zoom_in: "Bigger cards",
     draw_first_add: "Draw from the stock first. You can add cards from your hand after that.",
     log_cut_wait: "{name} is cutting the deck.",
     log_cut_wait_you: "You start this round. Cut the deck.",
@@ -3089,6 +3105,9 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
     app_windows: "Clique no ícone de instalação à direita da barra de endereço. Ou procure “Apps” ou “Salvar e compartilhar” no menu do navegador e escolha instalar.",
     app_iphone_t: "iPhone e iPad (Safari)",
     app_installed_toast: "Pronto, o aplicativo está instalado.",
+    zoom_label: "Tamanho das cartas na mesa",
+    zoom_out: "Cartas menores",
+    zoom_in: "Cartas maiores",
     draw_first_add: "Compre do monte primeiro. Depois você pode juntar cartas da mão.",
     log_cut_wait: "{name} está cortando o baralho.",
     log_cut_wait_you: "Você começa esta rodada. Corte o baralho.",
@@ -3532,7 +3551,7 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
   let botTimer = null;
   let toastTimer = null;
   let botFails = 0;
-  let prefs = { lang: detectLang(), level: 'hard', handSort: 'suit', music: true, musicVol: 35, sfx: true, sfxVol: 70, vibrate: true, track: 0, push: false };
+  let prefs = { lang: detectLang(), level: 'hard', handSort: 'suit', music: true, musicVol: 35, sfx: true, sfxVol: 70, vibrate: true, track: 0, push: false, zoomMine: 1, zoomOpp: 1 };
   const S = window.Sound || { configure() {}, sfx() {}, vibrate() {}, next() {}, TRACKS: [], track: 0, canVibrate: false };
   const soundPrefs = () => ({ music: prefs.music, musicVol: prefs.musicVol, sfx: prefs.sfx, sfxVol: prefs.sfxVol, vibrate: prefs.vibrate, track: prefs.track });
   let pending = null; // vykládka čekající na volbu, kam dát žolíka
@@ -3609,6 +3628,7 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
         for (const k of ['musicVol', 'sfxVol']) if (typeof p[k] === 'number' && p[k] >= 0 && p[k] <= 100) prefs[k] = p[k];
         if (typeof p.track === 'number') prefs.track = p.track;
         if (p.handSort === 'rank' || p.handSort === 'suit') prefs.handSort = p.handSort;
+        for (const k of ['zoomMine', 'zoomOpp']) if (typeof p[k] === 'number') prefs[k] = clampZoom(p[k]);
       }
     } catch (e) { /* bez úložiště */ }
   }
@@ -3859,7 +3879,13 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
     }).join('') : (red3 ? '' : `<p class="empty">${esc(t('none_yet'))}</p>`);
     const mine = ti === US();
     const title = mine ? (mode === '2v2' ? t('melds_ours') : t('melds_mine')) : t('melds_of', { name: teamName(ti) });
-    const head = `<div class="mhead"><span>${esc(title)}</span><span class="grow"></span>${open}${mine ? partnerHTML() : ''}</div>`;
+    const side = mine ? 'mine' : 'opp';
+    const z = prefs[mine ? 'zoomMine' : 'zoomOpp'];
+    const zoom = `<span class="zoom" role="group" aria-label="${esc(t('zoom_label'))}">`
+      + `<button class="zb" data-act="zoom" data-v="${side}-" aria-label="${esc(t('zoom_out'))}" ${z <= ZOOM_MIN + 0.001 ? 'disabled' : ''}>−</button>`
+      + `<span class="zi" aria-hidden="true">🔍</span>`
+      + `<button class="zb" data-act="zoom" data-v="${side}+" aria-label="${esc(t('zoom_in'))}" ${z >= ZOOM_MAX - 0.001 ? 'disabled' : ''}>+</button></span>`;
+    const head = `<div class="mhead"><span>${esc(title)}</span><span class="grow"></span>${open}${mine ? partnerHTML() : ''}${zoom}</div>`;
     return `${head}<div class="mrow">${red3}${body}</div>`;
   }
 
@@ -4061,6 +4087,43 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
       </table>
       <div class="stackbtns">${buttons}</div>`;
   }
+
+  // ---------- velikost karet na stole (zvlášť moje vykládky a soupeřovy) ----------
+  const ZOOM_MIN = 0.45, ZOOM_MAX = 1.3, ZOOM_STEP = 0.15;
+  function clampZoom(z) { return Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, Math.round(Number(z) * 100) / 100 || 1)); }
+  function applyZoom() {
+    const m = $('#myMelds'), o = $('#oppMelds');
+    if (m) m.style.setProperty('--mz', String(prefs.zoomMine));
+    if (o) o.style.setProperty('--mz', String(prefs.zoomOpp));
+  }
+  function setZoom(side, z) {
+    const k = side === 'mine' ? 'zoomMine' : 'zoomOpp';
+    prefs[k] = clampZoom(z);
+    applyZoom();
+  }
+  // dvěma prsty: roztažením zvětšit, stažením zmenšit (jen na stole, ne celá stránka)
+  let pinch = null;
+  document.addEventListener('touchstart', (ev) => {
+    if (ev.touches.length !== 2) return;
+    const zone = ev.target.closest && ev.target.closest('#myMelds, #oppMelds');
+    if (!zone) return;
+    const [a, b] = ev.touches;
+    const side = zone.id === 'myMelds' ? 'mine' : 'opp';
+    pinch = { side, d0: Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY) || 1, z0: prefs[side === 'mine' ? 'zoomMine' : 'zoomOpp'] };
+  }, { passive: true });
+  document.addEventListener('touchmove', (ev) => {
+    if (!pinch || ev.touches.length !== 2) return;
+    const [a, b] = ev.touches;
+    const d = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+    setZoom(pinch.side, pinch.z0 * (d / pinch.d0));
+    ev.preventDefault();
+  }, { passive: false });
+  document.addEventListener('touchend', (ev) => {
+    if (!pinch || ev.touches.length >= 2) return;
+    pinch = null;
+    savePrefs();
+    render();
+  });
 
   // ---------- sejmutí balíčku a výměna první karty ----------
   let cutAim = null; // kolik karet má podle hráče zůstat dole
@@ -4632,6 +4695,7 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
     const pileOk = myTurn() && st.phase === 'draw' && !E.pileError(st, ME);
     $('#score').innerHTML = scoreHTML();
     $('#oppSeat').innerHTML = oppSeatHTML();
+    applyZoom();
     $('#oppMelds').innerHTML = meldsHTML(THEM(), false);
     $('#center').innerHTML = centerHTML();
     $('#myMelds').innerHTML = meldsHTML(US(), myTurn() && ((st.phase === 'play' && sel.size > 0) || pileOk));
@@ -5396,6 +5460,14 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
       case 'pushtoggle': if (v === '1') enablePush(); else disablePush(); return;
       case 'tutorial': tut.slide = 0; openPage('tutintro'); break;
       case 'opencut': if (st.phase === 'cut' && myTurn()) overlay = 'cut'; break;
+      case 'zoom': {
+        const side = String(v || '').startsWith('mine') ? 'mine' : 'opp';
+        const k = side === 'mine' ? 'zoomMine' : 'zoomOpp';
+        setZoom(side, prefs[k] + (String(v).endsWith('+') ? ZOOM_STEP : -ZOOM_STEP));
+        savePrefs();
+        render();
+        return;
+      }
       case 'cutgo': {
         if (st.phase !== 'cut' || !myTurn() || cutAim == null) return;
         const aim = cutAim;

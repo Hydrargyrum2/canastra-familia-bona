@@ -123,7 +123,7 @@ button:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
 
 /* polovina stolu každého hráče */
 .zone {
-  flex: 1 1 0; min-height: 0; overflow-y: auto;
+  flex: 1 1 0; min-height: 0; overflow-y: auto; touch-action: pan-x pan-y; /* dva prsty mění velikost karet, ne stránku */
   padding: 6px 16px;
 }
 .zone.opp { border-bottom: 1px dashed rgba(234,246,240,0.10); }
@@ -141,7 +141,8 @@ button:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
 .mhead { flex-wrap: wrap; }
 
 .meld {
-  --cw: 54px; /* stejně velké jako balíček a hromádka */
+  --cwb: 54px; /* stejně velké jako balíček a hromádka */
+  --cw: calc(var(--cwb) * var(--mz, 1)); /* --mz: zvětšení/zmenšení stolu (tlačítka −/+ nebo dva prsty) */
   position: relative;
   display: inline-flex; align-items: flex-end;
   padding: 6px 8px 6px 6px; border-radius: 10px;
@@ -338,7 +339,8 @@ table.res tr.tot td:nth-child(2) { color: var(--brass); }
 #handwrap.myturn { border-top-color: var(--brass); }
 @media (min-width: 420px) { :root { --cw: 54px; } }
 @media (max-width: 480px) {
-  .meld, .stack, .picks { --cw: 44px; } /* na mobilu menší, ale vykládky pořád stejně velké jako balíček */
+  .stack, .picks { --cw: 44px; }
+  .meld { --cwb: 44px; } /* na mobilu menší, ale vykládky pořád stejně velké jako balíček */
   .seat:not(.small) { grid-auto-flow: column; align-items: center; gap: 10px; }
   .seat-top { padding: 4px 12px 0; }
   .arc { height: 34px; }
@@ -682,3 +684,11 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
 .cutres.hit b { color: var(--brass); text-shadow: 0 0 18px rgba(241,195,76,.55); }
 .cutres span { color: var(--muted); font-size: 13px; margin-top: 4px; }
 .btn.redraw { flex: 0 0 auto; }
+
+/* velikost karet na stole */
+.zoom { display: inline-flex; align-items: center; gap: 2px; margin-left: 4px; padding: 1px; border-radius: 12px; border: 1px solid var(--line); background: rgba(0,0,0,.18); text-transform: none; letter-spacing: 0; }
+.zoom .zb { width: 26px; height: 22px; border: 0; border-radius: 10px; background: transparent; color: #d7e6e1; font: 700 15px/1 var(--font-body); cursor: pointer; }
+.zoom .zb:hover:not(:disabled) { background: rgba(255,255,255,.08); }
+.zoom .zb:disabled { opacity: .35; cursor: default; }
+.zoom .zi { font-size: 11px; opacity: .8; }
+.meld { padding: calc(6px * var(--mz, 1)) calc(8px * var(--mz, 1)) calc(6px * var(--mz, 1)) calc(6px * var(--mz, 1)); }

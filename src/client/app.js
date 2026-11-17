@@ -38,7 +38,7 @@
   let botTimer = null;
   let toastTimer = null;
   let botFails = 0;
-  let prefs = { lang: detectLang(), level: 'hard', handSort: 'suit', music: true, musicVol: 35, sfx: true, sfxVol: 70, vibrate: true, track: 0, push: false };
+  let prefs = { lang: detectLang(), level: 'hard', handSort: 'suit', music: true, musicVol: 35, sfx: true, sfxVol: 70, vibrate: true, track: 0, push: false, zoomMine: 1, zoomOpp: 1 };
   const S = window.Sound || { configure() {}, sfx() {}, vibrate() {}, next() {}, TRACKS: [], track: 0, canVibrate: false };
   const soundPrefs = () => ({ music: prefs.music, musicVol: prefs.musicVol, sfx: prefs.sfx, sfxVol: prefs.sfxVol, vibrate: prefs.vibrate, track: prefs.track });
   let pending = null; // vykládka čekající na volbu, kam dát žolíka
@@ -115,6 +115,7 @@
         for (const k of ['musicVol', 'sfxVol']) if (typeof p[k] === 'number' && p[k] >= 0 && p[k] <= 100) prefs[k] = p[k];
         if (typeof p.track === 'number') prefs.track = p.track;
         if (p.handSort === 'rank' || p.handSort === 'suit') prefs.handSort = p.handSort;
+        for (const k of ['zoomMine', 'zoomOpp']) if (typeof p[k] === 'number') prefs[k] = clampZoom(p[k]);
       }
     } catch (e) { /* bez úložiště */ }
   }
@@ -365,7 +366,13 @@
     }).join('') : (red3 ? '' : `<p class="empty">${esc(t('none_yet'))}</p>`);
     const mine = ti === US();
     const title = mine ? (mode === '2v2' ? t('melds_ours') : t('melds_mine')) : t('melds_of', { name: teamName(ti) });
-    const head = `<div class="mhead"><span>${esc(title)}</span><span class="grow"></span>${open}${mine ? partnerHTML() : ''}</div>`;
+    const side = mine ? 'mine' : 'opp';
+    const z = prefs[mine ? 'zoomMine' : 'zoomOpp'];
+    const zoom = `<span class="zoom" role="group" aria-label="${esc(t('zoom_label'))}">`
+      + `<button class="zb" data-act="zoom" data-v="${side}-" aria-label="${esc(t('zoom_out'))}" ${z <= ZOOM_MIN + 0.001 ? 'disabled' : ''}>−</button>`
+      + `<span class="zi" aria-hidden="true">🔍</span>`
+      + `<button class="zb" data-act="zoom" data-v="${side}+" aria-label="${esc(t('zoom_in'))}" ${z >= ZOOM_MAX - 0.001 ? 'disabled' : ''}>+</button></span>`;
+    const head = `<div class="mhead"><span>${esc(title)}</span><span class="grow"></span>${open}${mine ? partnerHTML() : ''}${zoom}</div>`;
     return `${head}<div class="mrow">${red3}${body}</div>`;
   }
 
@@ -567,6 +574,43 @@
       </table>
       <div class="stackbtns">${buttons}</div>`;
   }
+
+  // ---------- velikost karet na stole (zvlášť moje vykládky a soupeřovy) ----------
+  const ZOOM_MIN = 0.45, ZOOM_MAX = 1.3, ZOOM_STEP = 0.15;
+  function clampZoom(z) { return Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, Math.round(Number(z) * 100) / 100 || 1)); }
+  function applyZoom() {
+    const m = $('#myMelds'), o = $('#oppMelds');
+    if (m) m.style.setProperty('--mz', String(prefs.zoomMine));
+    if (o) o.style.setProperty('--mz', String(prefs.zoomOpp));
+  }
+  function setZoom(side, z) {
+    const k = side === 'mine' ? 'zoomMine' : 'zoomOpp';
+    prefs[k] = clampZoom(z);
+    applyZoom();
+  }
+  // dvěma prsty: roztažením zvětšit, stažením zmenšit (jen na stole, ne celá stránka)
+  let pinch = null;
+  document.addEventListener('touchstart', (ev) => {
+    if (ev.touches.length !== 2) return;
+    const zone = ev.target.closest && ev.target.closest('#myMelds, #oppMelds');
+    if (!zone) return;
+    const [a, b] = ev.touches;
+    const side = zone.id === 'myMelds' ? 'mine' : 'opp';
+    pinch = { side, d0: Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY) || 1, z0: prefs[side === 'mine' ? 'zoomMine' : 'zoomOpp'] };
+  }, { passive: true });
+  document.addEventListener('touchmove', (ev) => {
+    if (!pinch || ev.touches.length !== 2) return;
+    const [a, b] = ev.touches;
+    const d = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+    setZoom(pinch.side, pinch.z0 * (d / pinch.d0));
+    ev.preventDefault();
+  }, { passive: false });
+  document.addEventListener('touchend', (ev) => {
+    if (!pinch || ev.touches.length >= 2) return;
+    pinch = null;
+    savePrefs();
+    render();
+  });
 
   // ---------- sejmutí balíčku a výměna první karty ----------
   let cutAim = null; // kolik karet má podle hráče zůstat dole
@@ -1138,6 +1182,7 @@
     const pileOk = myTurn() && st.phase === 'draw' && !E.pileError(st, ME);
     $('#score').innerHTML = scoreHTML();
     $('#oppSeat').innerHTML = oppSeatHTML();
+    applyZoom();
     $('#oppMelds').innerHTML = meldsHTML(THEM(), false);
     $('#center').innerHTML = centerHTML();
     $('#myMelds').innerHTML = meldsHTML(US(), myTurn() && ((st.phase === 'play' && sel.size > 0) || pileOk));
@@ -1902,6 +1947,14 @@
       case 'pushtoggle': if (v === '1') enablePush(); else disablePush(); return;
       case 'tutorial': tut.slide = 0; openPage('tutintro'); break;
       case 'opencut': if (st.phase === 'cut' && myTurn()) overlay = 'cut'; break;
+      case 'zoom': {
+        const side = String(v || '').startsWith('mine') ? 'mine' : 'opp';
+        const k = side === 'mine' ? 'zoomMine' : 'zoomOpp';
+        setZoom(side, prefs[k] + (String(v).endsWith('+') ? ZOOM_STEP : -ZOOM_STEP));
+        savePrefs();
+        render();
+        return;
+      }
       case 'cutgo': {
         if (st.phase !== 'cut' || !myTurn() || cutAim == null) return;
         const aim = cutAim;
