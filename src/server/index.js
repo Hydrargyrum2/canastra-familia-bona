@@ -14,9 +14,8 @@ const BOT_NAMES = ['Caio', 'Bia', 'Duda', 'Tito', 'Lia', 'Nando'];
 const LEVELS = ['easy', 'medium', 'hard'];
 const EMOTES = ['laugh', 'slow', 'sleep', 'luck', 'clown', 'fire', 'joker', 'black3', 'cry', 'cool', 'gg', 'hi', 'tomato'];
 const CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
-const DISCONNECT_MS = 60_000;
+const DISCONNECT_MS = 10_000; // po této době se ostatním napíše, že se čeká na odpojeného hráče (robot za nikoho nehraje)
 const BOT_DELAY_MS = 1300; // robot hraje pomaleji, ať je vidět, jak karty jezdí
-const TURN_MS = 120_000; // limit na tah (jen když hrají aspoň dva lidé); pak za hráče zahraje střední robot
 const PBKDF2_ITER = 20_000;
 
 const M = (k, p) => ({ k, p: p || {} });
@@ -676,7 +675,7 @@ export class Table extends DurableObject {
   publicSeats() {
     return this.s.seats.map((x) => (x ? {
       kind: x.kind, id: x.kind === 'human' ? x.id : null, name: x.name, level: x.level || null,
-      connected: x.kind === 'bot' ? true : !!x.connected, botControl: !!x.botControl, away: !!(x.botControl && x.connected),
+      connected: x.kind === 'bot' ? true : !!x.connected, botControl: false, away: false,
     } : null));
   }
   seatOf(userId) {
@@ -706,10 +705,9 @@ export class Table extends DurableObject {
       const st = this.s.seats[seat];
       st.connected = true;
       st.name = user.name;
-      if (st.botControl) {
-        st.botControl = false;
-        this.sysChat('back', { name: user.name });
-      }
+      if (st.botControl || st.dcAnnounced) this.sysChat('back', { name: user.name });
+      st.botControl = false;
+      st.dcAnnounced = false;
       delete this.s.timers['dc' + seat];
     }
     await this.save();
@@ -808,9 +806,7 @@ export class Table extends DurableObject {
       }
       case 'act': {
         if (s.status !== 'playing' || seat === -1) return;
-        if (s.seats[seat].botControl || s.seats[seat].autoTurn) return err('bot_is_playing');
         const r = this.applyAction(seat, m.a || {});
-        if (r.ok) s.seats[seat].timeouts = 0;
         if (!r.ok) return err(r.error || M('server_error'));
         this.afterGameChange();
         break;
@@ -819,18 +815,6 @@ export class Table extends DurableObject {
         if (s.status !== 'playing' || seat === -1 || s.game.phase !== 'roundOver') return;
         s.ready[seat] = true;
         this.maybeNextRound();
-        break;
-      }
-      case 'back': {
-        // hráč je u stolu, ale robot za něj hrál, protože nestihl tahy
-        if (seat === -1) return;
-        const x = s.seats[seat];
-        if (x.kind !== 'human' || !x.botControl) return;
-        x.botControl = false;
-        x.away = false;
-        x.timeouts = 0;
-        if (!(s.game && s.game.current === seat && x.autoTurn)) x.autoTurn = false;
-        this.sysChat('back', { name: x.name });
         break;
       }
       case 'leave': {
@@ -918,11 +902,11 @@ export class Table extends DurableObject {
     for (const x of s.seats) if (x.kind === 'human') { x.botControl = false; x.autoTurn = false; x.away = false; x.timeouts = 0; }
     delete s.timers.turn;
     delete s.timers.ready;
-    s.turnSeat = null;
   }
   isBotSeat(i) {
     const x = this.s.seats[i];
-    return x && (x.kind === 'bot' || x.botControl || x.autoTurn);
+    // za lidi robot nehraje: když se odpojí, hra počká
+    return !!x && x.kind === 'bot';
   }
   gameMeta(left) {
     const s = this.s;
@@ -957,8 +941,6 @@ export class Table extends DurableObject {
   afterGameChange() {
     const s = this.s;
     const g = s.game;
-    // tah za hráče, který nestihl limit, končí, jakmile je na řadě někdo jiný
-    s.seats.forEach((x, i) => { if (x && x.autoTurn && (g.current !== i || (g.phase !== 'draw' && g.phase !== 'play'))) x.autoTurn = false; });
     if (g.phase === 'roundOver' || g.phase === 'gameOver') {
       s.ready = {};
       s.seats.forEach((x, i) => { if (this.isBotSeat(i) || !x.connected) s.ready[i] = true; });
@@ -998,20 +980,8 @@ export class Table extends DurableObject {
     } else {
       delete s.timers.bot;
     }
-    // limit na tah (jen člověk, který hraje sám) a na „Další kolo“
-    const g = s.game;
-    const turnMs = Number(this.env.TURN_MS) || TURN_MS;
-    const live = s.status === 'playing' && g && (g.phase === 'draw' || g.phase === 'play');
-    const cur = live ? s.seats[g.current] : null;
-    // limit platí, jen když u stolu sedí aspoň dva lidé (proti robotům se nespěchá)
-    const humansAtTable = s.seats.filter((x) => x && x.kind === 'human').length;
-    if (cur && cur.kind === 'human' && !cur.botControl && !cur.autoTurn && humansAtTable >= 2) {
-      if (s.turnSeat !== g.current || !s.timers.turn) { s.turnSeat = g.current; s.timers.turn = Date.now() + turnMs; }
-    } else {
-      delete s.timers.turn;
-      s.turnSeat = null;
-    }
-    // další kolo se nespouští samo: každý si může v klidu prohlédnout výsledky
+    // žádný limit na tah ani na „Další kolo“: hra počká
+    delete s.timers.turn;
     delete s.timers.ready;
     const due = Object.values(s.timers).filter(Boolean);
     if (due.length) await this.ctx.storage.setAlarm(Math.min(...due));
@@ -1028,30 +998,12 @@ export class Table extends DurableObject {
       delete s.timers[k];
       const i = Number(k.slice(2));
       const x = s.seats[i];
-      if (x && x.kind === 'human' && !x.connected && s.status === 'playing') {
-        x.botControl = true;
-        this.sysChat('takeover', { name: x.name });
-        if (s.game.phase === 'roundOver') { s.ready[i] = true; this.maybeNextRound(); }
+      if (x && x.kind === 'human' && !x.connected && s.status === 'playing' && !x.dcAnnounced) {
+        // jen oznámení; hra počká, až se hráč vrátí
+        x.dcAnnounced = true;
+        this.sysChat('dc_wait', { name: x.name });
         changed = true;
       }
-    }
-    if (s.timers.turn && s.timers.turn <= now) {
-      delete s.timers.turn;
-      const g = s.game;
-      const x = g ? s.seats[g.current] : null;
-      if (s.status === 'playing' && g && (g.phase === 'draw' || g.phase === 'play') && g.current === s.turnSeat && x && x.kind === 'human' && !x.botControl) {
-        x.timeouts = (x.timeouts || 0) + 1;
-        x.autoTurn = true;
-        if (x.timeouts >= 2) {
-          x.botControl = true;
-          x.away = true;
-          this.sysChat('away', { name: x.name });
-        } else {
-          this.sysChat('timeout', { name: x.name });
-        }
-        changed = true;
-      }
-      s.turnSeat = null;
     }
     if (s.timers.bot && s.timers.bot <= now) {
       delete s.timers.bot;
@@ -1116,7 +1068,6 @@ export class Table extends DurableObject {
       ready: s.ready,
       rated: !!s.rated,
       lastResult: s.lastResult,
-      turnDeadline: s.timers.turn || null,
       now: Date.now(),
       game: this.gameView(seat),
     };

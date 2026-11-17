@@ -108,16 +108,21 @@ async def main():
         chat = await A.inner_text('#chatList')
         check('segunda mensagem' not in chat and 'oi Filip' not in chat, 'zprávy ztlumeného hráče se nezobrazují')
         await A.click('[data-act=chatclose]')
-        # odpočet: kdo je na tahu, nic nedělá → odpočet, pak robot
-        who = A if await A.locator('#handwrap.myturn').count() else B
-        await who.wait_for_function("document.querySelector('.ttimer') && document.querySelector('.ttimer').textContent.length > 0", timeout=8000)
-        check(True, 'odpočet tahu se zobrazí: ' + await who.inner_text('.ttimer'))
-        await who.screenshot(path=SH + 'turn-timer.png')
-        await who.wait_for_selector('[data-act=imback]', timeout=40000)
-        await who.screenshot(path=SH + 'away.png')
-        await who.click('[data-act=imback]')
-        await who.wait_for_selector('[data-act=imback]', state='detached', timeout=6000)
-        check(True, 'po dvou nestihnutých tazích „Vracím se“ a návrat')
+        # odpojení: kdo není na tahu, zavře aplikaci; druhý odehraje tah a pak vidí, že hra stojí
+        for pg in (A, B):
+            if await pg.locator('[data-act=chatclose]').is_visible(): await pg.click('[data-act=chatclose]')
+        on = A if await A.locator('#handwrap.myturn').count() else B
+        off = B if on is A else A
+        check(await on.locator('.ttimer').count() == 0, 'žádný odpočet tahu')
+        await off.context.close()
+        await on.click('#actions [data-act=draw]')
+        await on.wait_for_timeout(700)
+        await on.locator('#hand .hc').first.click()
+        await on.click('#actions [data-act=discard]')
+        await on.wait_for_selector('.paused', timeout=10000)
+        txt = await on.inner_text('#status')
+        check('Čeká' in txt or 'Esperando' in txt, 'hra stojí a ukazuje, že se čeká na odpojeného hráče: ' + txt.strip())
+        await on.screenshot(path=SH + 'paused.png')
         # výuka
         C = await page(b, 'cs-CZ')
         await C.click('[data-act=tutorial]')
@@ -151,7 +156,7 @@ async def main():
         await C.click('[data-act=privacy]')
         await C.wait_for_selector('h2:has-text("Soukromí")')
         await C.screenshot(path=SH + 'privacy.png', full_page=True)
-        for pg, n in ((A, 'A'), (B, 'B'), (C, 'C')):
+        for pg, n in ((on, 'na tahu'), (C, 'C')):
             check(not pg.errs, f'{n}: žádné chyby v konzoli {pg.errs[:2]}')
         await b.close()
     sys.exit(1 if fails else 0)

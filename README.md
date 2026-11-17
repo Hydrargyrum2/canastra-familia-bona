@@ -19,7 +19,7 @@ První zaregistrovaný účet je správce (může resetovat zapomenutá hesla).
 - Účty: profil s obrázkem, statistiky proti lidem a s roboty, historie her, vzájemné zápasy.
 - Přátelé (žádosti s potvrzením), hledání hráčů, žebříček, ztlumení hráče.
 - Upozornění na pozvánky a žádosti o přátelství i se zavřenou aplikací (Web Push).
-- Limit 2 minuty na tah, když u stolu sedí aspoň dva lidé; pak táhne střední robot. Další kolo se nespouští samo.
+- Bez časového limitu: když se hráč odpojí, hra počká, až se vrátí (robot za lidi nehraje). Další kolo se nespouští samo.
 - Hudba v pozadí, zvuky, vibrace; instalace jako aplikace (Android, Windows, iPhone).
 
 ## Struktura

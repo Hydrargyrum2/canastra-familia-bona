@@ -308,12 +308,17 @@
     return `<span class="arc" aria-hidden="true">${out}</span>`;
   }
   const playing = (i) => st.current === i && (st.phase === 'draw' || st.phase === 'play');
+  // hra stojí, když je na tahu člověk, který se odpojil (robot za něj nehraje)
+  function pausedFor() {
+    if (!online() || !net.view || !(st.phase === 'draw' || st.phase === 'play')) return null;
+    const s = net.view.seats[st.current];
+    return s && s.kind === 'human' && !s.connected ? st.current : null;
+  }
   function seatTag(i, partner) {
     const p = st.players[i];
     if (online() && net.view) {
       const s = net.view.seats[i];
       if (s && s.kind === 'human') {
-        if (s.botControl) return t('bot_playing');
         if (!s.connected) return t('disconnected');
         return partner ? t('partner_tag') : t('opp_tag');
       }
@@ -386,6 +391,7 @@
     let hint = '';
     if (st.phase === 'waiting') hint = esc(t('room_waiting'));
     else if (st.phase === 'roundOver' || st.phase === 'gameOver') hint = esc(t('round_over_short'));
+    else if (pausedFor() != null) hint = `<span class="paused">${esc(t('paused_wait', { name: nameOf(pausedFor()) }))}</span>`;
     else if (!myTurn()) hint = `<span class="dots">${esc(t('playing', { name: nameOf(st.current) }))}</span>`;
     else if (st.phase === 'draw') {
       const canPile = !E.pileError(st, ME);
@@ -399,10 +405,7 @@
         hint += ` <span class="badge">${esc(t('open_badge', { v: st.turn.laid, min: E.RULES.openMin }))}</span>`;
       }
     }
-    const v = online() ? net.view : null;
-    const timer = v && v.turnDeadline && (st.phase === 'draw' || st.phase === 'play')
-      ? ` <span class="ttimer ${myTurn() ? 'mine' : ''}" data-deadline="${v.turnDeadline}" data-show="30000"></span>` : '';
-    return `<span class="hint">${hint}</span>${timer}`;
+    return `<span class="hint">${hint}</span>`;
   }
 
   function myHand() {
@@ -429,9 +432,7 @@
     if (st.phase === 'roundOver' || st.phase === 'gameOver') {
       return `<button class="btn primary" data-act="openround">${esc(t(st.phase === 'gameOver' ? 'btn_result_game' : 'btn_result_round'))}</button>`;
     }
-    if (online() && net.view && net.view.seats[ME] && net.view.seats[ME].away) {
-      return `<div class="awaybar">🤖 ${esc(t('bot_plays_for_you'))}</div><button class="btn primary" data-act="imback">${esc(t('im_back'))}</button>`;
-    }
+    if (pausedFor() != null) return `<div class="wait"><span class="paused">⏸ ${esc(t('paused_short', { name: nameOf(pausedFor()) }))}</span></div>`;
     if (!myTurn()) return `<div class="wait"><span class="dots">${esc(t('playing', { name: nameOf(st.current) }))}</span></div>`;
     if (st.phase === 'draw') {
       const pileErr = E.pileError(st, ME);
@@ -1199,15 +1200,8 @@
       el.textContent = !show || left <= show ? (el.dataset.prefix ? t(el.dataset.prefix, { t: mmss(left) }) : mmss(left)) : '';
       el.classList.toggle('urgent', left <= 10000);
     });
-    if (v && v.turnDeadline && myTurn() && !(v.seats[ME] && v.seats[ME].botControl)) {
-      const left = v.turnDeadline - nowSrv();
-      for (const mark of [30000, 10000]) {
-        const key = v.turnDeadline + ':' + mark;
-        if (left <= mark && left > 0 && !buzzed[key]) { buzzed[key] = true; S.vibrate(mark === 10000 ? [80, 60, 80] : 120); S.sfx('tick'); }
-      }
-    }
   }
-  setInterval(() => { if (online() && net.view && net.view.turnDeadline) tickTimers(); }, 1000);
+
 
   // Zvuky podle toho, co se ve hře změnilo od minulého vykreslení.
   let lastSig = null;
@@ -1802,7 +1796,6 @@
         apiCall('/api/admin/avatar', { id: Number(v) }).then(() => openProfile(v));
         return;
       case 'forgot': net.forgot = true; break;
-      case 'imback': sendTable({ t: 'back' }); return;
       case 'pushon': enablePush(); return;
       case 'pushtoggle': if (v === '1') enablePush(); else disablePush(); return;
       case 'tutorial': tut.slide = 0; openPage('tutintro'); break;

@@ -1,5 +1,5 @@
 // Test: přátelé, profily, historie, vzájemné zápasy, ztlumení, obrázky, přezdívka, heslo, smazání účtu,
-// upozornění (uložení předplatného) a limit na tah. Server: npx wrangler dev --var BOT_DELAY_MS:5 --var DC_MS:1500 --var TURN_MS:4000 (nebo jiný krátký limit)
+// upozornění (uložení předplatného), bez limitu na tah. Server: npx wrangler dev --var BOT_DELAY_MS:5 --var DC_MS:1500
 import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
 const E = require('../src/client/engine.js');
@@ -154,43 +154,19 @@ async function main() {
   r = await post('/api/friends/request', { id: P3.id }, P2.token);
   check(r.status === 200 && r.data.status === 'out', 'žádost offline hráči projde, i když se upozornění nepodaří doručit');
 
-  console.log('Hra, historie, vzájemné zápasy, limit na tah');
+  console.log('Hra, historie, vzájemné zápasy, bez limitu na tah');
   const code = (await post('/api/table/create', { mode: '1v1' }, P1.token)).data.code;
   const t1 = connect('/api/table/ws?code=' + code, P1.token); await t1.opened; await sleep(80);
   const t2 = connect('/api/table/ws?code=' + code, P2.token); await t2.opened;
   await t1.wait((m) => m.t === 'state' && m.s.seats.every(Boolean));
   t1.send({ t: 'start' });
   const st0 = await t1.wait((m) => m.t === 'state' && m.s.status === 'playing');
-  check(st0.s.turnDeadline > st0.s.now && st0.s.turnDeadline - st0.s.now <= 120000, 'stav obsahuje konec limitu na tah');
-  // P1 nedělá nic, P2 hraje rychle
-  const idle = st0.s.game.current === 0 ? t1 : t2;
-  const active = idle === t1 ? t2 : t1;
-  const idleSeat = idle === t1 ? 0 : 1;
-  const play = async (until, ms) => {
-    const t0 = Date.now();
-    while (Date.now() - t0 < ms) {
-      const st = active.last('state');
-      if (until()) return true;
-      const a = st && decide(st.s);
-      if (a) { const n = active.inbox.length; active.send({ t: 'act', a }); try { await active.wait((m) => (m.t === 'state' || m.t === 'error') && active.inbox.indexOf(m) >= n, 3000); } catch (e) {} } else await sleep(30);
-    }
-    return until();
-  };
-  const tm = await idle.wait((m) => m.t === 'chat' && m.m.kind === 'sys' && m.m.k === 'timeout', 9000).catch(() => null);
-  check(!!tm, 'po limitu přijde zpráva, že za hráče táhne robot');
-  const passed = await play(() => { const s = active.last('state'); return s && s.s.game.current !== idleSeat; }, 6000);
-  check(passed, 'robot za nečinného hráče dohrál tah');
-  const away = await play(() => idle.inbox.some((m) => m.t === 'chat' && m.m.kind === 'sys' && m.m.k === 'away'), 15000);
-  check(away, 'po druhém nestihnutém tahu hraje robot dál (hráč je pryč)');
-  const sAway = idle.last('state').s;
-  check(sAway.seats[idleSeat].away === true, 'místo je označené „pryč“');
-  idle.send({ t: 'act', a: { type: 'draw' } });
-  const er = await idle.wait((m) => m.t === 'error', 3000).catch(() => null);
-  check(er && er.error.k === 'bot_is_playing', 'když hraje robot, hráč nemůže táhnout');
-  idle.send({ t: 'back' });
-  const back = await idle.wait((m) => m.t === 'chat' && m.m.kind === 'sys' && m.m.k === 'back', 4000).catch(() => null);
-  await sleep(150);
-  check(!!back && idle.last('state').s.seats[idleSeat].away === false && idle.last('state').s.seats[idleSeat].botControl === false, 'tlačítkem „Vracím se“ hráč převezme hru');
+  check(st0.s.turnDeadline == null, 'žádný limit na tah');
+  const idleSeat = st0.s.game.current;
+  const idle = idleSeat === 0 ? t1 : t2;
+  await sleep(2500);
+  const st1 = idle.last('state').s;
+  check(st1.game.current === idleSeat && !idle.inbox.some((m) => m.t === 'chat' && m.m.kind === 'sys' && (m.m.k === 'timeout' || m.m.k === 'away')), 'nečinný hráč je pořád na tahu, robot za něj nehraje');
   // P2 odejde → prohra, historie a vzájemné zápasy
   t2.send({ t: 'leave' });
   await t2.wait((m) => m.t === 'left');
@@ -210,7 +186,7 @@ async function main() {
   t3.send({ t: 'start' });
   const p3 = await t3.wait((m) => m.t === 'state' && m.s.status === 'playing');
   await sleep(300);
-  check(!t3.last('state').s.turnDeadline, 'člověk sám s robotem nemá limit na tah');
+  check(!t3.last('state').s.turnDeadline, 'člověk s robotem nemá limit na tah');
   const c4 = (await post('/api/table/create', { mode: '2v2', bots: [1, 3] }, P1.token)).data.code;
   const t4 = connect('/api/table/ws?code=' + c4, P1.token); await t4.opened;
   const w4 = await t4.wait((m) => m.t === 'state');

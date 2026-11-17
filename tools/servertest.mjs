@@ -157,10 +157,21 @@ async function main() {
     if (!dcTested && st && st.s.game && st.s.game.round === 2 && tb.ws.readyState === 1) {
       dcTested = true;
       tb.ws.close();
-      await ta.wait((m) => m.t === 'chat' && m.m.kind === 'sys' && m.m.k === 'takeover', 8000).then(() => check(true, 'po odpojení převzal Bobovo místo robot')).catch(() => check(false, 'robot po odpojení nepřevzal'));
+      await ta.wait((m) => m.t === 'chat' && m.m.kind === 'sys' && m.m.k === 'dc_wait', 8000).then(() => check(true, 'po odpojení přijde zpráva, že se na Boba čeká')).catch(() => check(false, 'zpráva o čekání nepřišla'));
+      // hraje se, dokud není na tahu Bob; pak hra stojí
+      for (let k = 0; k < 400; k++) {
+        const s1 = ta.last('state').s;
+        if (s1.game.current === 2 && (s1.game.phase === 'draw' || s1.game.phase === 'play')) break;
+        const a = decide(s1);
+        if (a) { const n = ta.inbox.length; ta.send({ t: 'act', a }); try { await ta.wait((m) => (m.t === 'state' || m.t === 'error') && ta.inbox.indexOf(m) >= n, 3000); } catch (e) {} } else await sleep(30);
+      }
+      const p0 = ta.last('state').s;
+      await sleep(2500);
+      const p1 = ta.last('state').s;
+      check(p0.game.current === 2 && p1.game.current === 2 && JSON.stringify(p1.game.log.slice(-1)) === JSON.stringify(p0.game.log.slice(-1)) && !p1.seats[2].connected, 'hra stojí, za odpojeného Boba nikdo nehraje');
       const tb2 = connect('/api/table/ws?code=' + code, TB); await tb2.opened;
       const back = await tb2.wait((m) => m.t === 'state' && m.s.me.seat === 2);
-      check(!back.s.seats[2].botControl, 'Bob se vrátil na své místo');
+      check(back.s.seats[2].connected && !back.s.seats[2].botControl, 'Bob se vrátil na své místo a hraje dál sám');
       players2[1].c = tb2;
       tb2.ws.addEventListener('message', (ev) => { if (ev.data.includes('"snap"')) leak = true; });
     }

@@ -643,3 +643,5 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
 .flycard { position: fixed; z-index: 55; pointer-events: none; margin: 0; filter: drop-shadow(0 8px 14px rgba(0,0,0,0.45)); }
 .flycard > .card, .flycard > .hc { display: block; }
 .flycard .card { margin: 0 !important; }
+
+.paused { color: #ffd59a; font-weight: 600; }
