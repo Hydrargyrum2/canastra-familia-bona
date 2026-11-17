@@ -132,7 +132,14 @@
       if (!lay.error) lay.moved = true;
       return lay;
     }
-    return layoutSeq(nat, hasW || newW.length === 1, hasW ? meld.wildPos : null, prefer);
+    const stay = layoutSeq(nat, hasW || newW.length === 1, hasW ? meld.wildPos : null, prefer);
+    // Žolík, který už v postupce leží, se smí posunout (z kraje do mezery), aby přiložené karty zapadly.
+    // Stejně jako u hromádky: když karty pasují i bez posunu, žolík zůstane, kde je.
+    if (stay.error && hasW && !newW.length) {
+      const lay = layoutSeq(nat, true, null, prefer);
+      if (!lay.error) { lay.moved = true; return lay; }
+    }
+    return stay;
   }
 
   // Hromádka přiložením k vlastní vykládce: přikládá se jen samotná vrchní karta (z ruky nic).
@@ -526,6 +533,7 @@
   }
 
   function checkAdd(st, pi, meldId, ids, prefer) {
+    if (st.phase === 'draw' && st.current === pi) return { error: M('draw_first_add') };
     if (st.phase !== 'play' || st.current !== pi) return { error: M('cant_meld') };
     const p = st.players[pi];
     const team = st.teams[p.team];

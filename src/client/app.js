@@ -2084,6 +2084,11 @@
       act(a.dataset.act, a);
       return;
     }
+    // v lízací fázi: vybraná karta z ruky a klepnutí na vlastní vykládku = připomenout, že se nejdřív líže
+    if (!ev.target.closest('[data-meld]') && ev.target.closest('#myMelds [data-mid]') && myTurn() && st.phase === 'draw' && sel.size) {
+      toast(t('draw_first_add'));
+      return;
+    }
     const m = ev.target.closest('[data-meld]');
     if (m) {
       if (!myTurn()) return;
@@ -2091,7 +2096,9 @@
       if (st.phase === 'draw') r = attempt('pile', pileVariant(Number(m.dataset.meld)));
       else if (st.phase === 'play' && sel.size) r = attempt('add', { ids: Array.from(sel), meldId: Number(m.dataset.meld) });
       else return;
-      if (r && !r.ok) toast(tr(r.error)); else if (r) sel.clear();
+      // vybrané karty z ruky jdou přiložit až po líznutí; hromádka se přikládá jen samotnou vrchní kartou
+      if (r && !r.ok && st.phase === 'draw' && sel.size) toast(t('draw_first_add'));
+      else if (r && !r.ok) toast(tr(r.error)); else if (r) sel.clear();
       afterChange();
       return;
     }

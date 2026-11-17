@@ -234,6 +234,7 @@
     app_windows: "Klikni na ikonu instalace vpravo v adresním řádku. Případně v nabídce prohlížeče najdi „Aplikace“ nebo „Uložit a sdílet“ a zvol instalaci.",
     app_iphone_t: "iPhone a iPad (Safari)",
     app_installed_toast: "Hotovo, aplikace je nainstalovaná.",
+    draw_first_add: "Nejdřív si lízni z balíčku. Z ruky můžeš přikládat až potom.",
     log_cut_wait: "{name} snímá balíček.",
     log_cut_wait_you: "Začínáš kolo. Sejmi balíček.",
     log_cut: "{name} snímá balíček. Dole zůstalo {left}, potřeba bylo {target}.",
@@ -469,6 +470,7 @@
         <li>Skupiny stejné hodnoty jen z králů, es a čtyřek.</li>
         <li>Žolíci jsou dvojky a jokery, v jedné vykládce nejvýš jeden.</li>
         <li>Žolíka v postupce můžeš nahradit kartou, kterou zastupuje (z ruky i z hromádky). Žolík se pak posune jinam ve stejné postupce a ty si vybereš, jestli dolů, nebo nahoru. Pod čtyřku ani nad eso nejde a do jiné vykládky ho přesunout nejde.</li>
+        <li>Žolík z kraje postupky se smí posunout do mezery, když tím přikládaná karta zapadne (z ruky i z hromádky). Třeba 7♦ 8♦ 2♦ (jako 9♦) a přiložíš 5♦: dvojka se posune na místo 6♦.</li>
         <li>Canasta má 7 a víc karet. Čistá je bez žolíka.</li>
         <li>Nad 2 000 bodů musí první vyložení v kole dát aspoň 150 bodů.</li>
       </ul>
@@ -722,6 +724,7 @@
     app_windows: "Click the install icon on the right of the address bar. Or look for “Apps” or “Save and share” in the browser menu and choose install.",
     app_iphone_t: "iPhone and iPad (Safari)",
     app_installed_toast: "Done, the app is installed.",
+    draw_first_add: "Draw from the stock first. You can add cards from your hand after that.",
     log_cut_wait: "{name} is cutting the deck.",
     log_cut_wait_you: "You start this round. Cut the deck.",
     log_cut: "{name} cuts the deck. {left} left at the bottom, {target} needed.",
@@ -957,6 +960,7 @@
         <li>Sets of the same rank only for kings, aces and fours.</li>
         <li>Twos and jokers are wild, at most one per meld.</li>
         <li>You can replace a wild card in a run with the card it stands for (from your hand or the pile). The wild card then moves to another spot in the same run, and you choose whether it goes to the bottom or the top. It can never go below 4 or above ace, and never to a different meld.</li>
+        <li>A wild card at the end of a run may move into a gap so that the card you add fits (from your hand or the pile). For example 7♦ 8♦ 2♦ (as 9♦) plus 5♦: the two moves to the 6♦ spot.</li>
         <li>A canasta has 7 or more cards. A clean canasta has no wild card.</li>
         <li>Above 2,000 points your first meld of a round must be worth at least 150.</li>
       </ul>
@@ -1210,6 +1214,7 @@
     app_windows: "Clique no ícone de instalação à direita da barra de endereço. Ou procure “Apps” ou “Salvar e compartilhar” no menu do navegador e escolha instalar.",
     app_iphone_t: "iPhone e iPad (Safari)",
     app_installed_toast: "Pronto, o aplicativo está instalado.",
+    draw_first_add: "Compre do monte primeiro. Depois você pode juntar cartas da mão.",
     log_cut_wait: "{name} está cortando o baralho.",
     log_cut_wait_you: "Você começa esta rodada. Corte o baralho.",
     log_cut: "{name} corta o baralho. Ficaram {left} embaixo, eram precisas {target}.",
@@ -1445,6 +1450,7 @@
         <li>Trincas do mesmo valor só de reis, ases e quatros.</li>
         <li>Dois e jokers são curingas, no máximo um por jogo.</li>
         <li>Você pode trocar o curinga de uma sequência pela carta que ele representa (da mão ou do lixo). O curinga então muda de lugar na mesma sequência, e você escolhe se vai para baixo ou para cima. Nunca abaixo do 4 nem acima do ás, e nunca para outro jogo.</li>
+        <li>Um curinga na ponta de uma sequência pode ir para um buraco para a carta que você junta encaixar (da mão ou do lixo). Por exemplo 7♦ 8♦ 2♦ (como 9♦) mais 5♦: o dois vai para o lugar do 6♦.</li>
         <li>A canastra tem 7 cartas ou mais. A limpa não tem curinga.</li>
         <li>Acima de 2.000 pontos, a primeira baixada da rodada precisa valer pelo menos 150.</li>
       </ul>
