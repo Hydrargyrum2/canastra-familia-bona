@@ -1035,7 +1035,10 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
     st.turn.mustMeld = null;
     st.turn.from = 'pile';
     st.phase = 'play';
-    log(st, M('log_take_pile', { pi, card: { r: chk.top.r, s: chk.top.s }, n: count }));
+    log(st, M('log_take_pile', {
+      pi, card: { r: chk.top.r, s: chk.top.s }, n: count,
+      add: !!chk.meld, with: chk.handCards.map((c) => ({ r: c.r, s: c.s })),
+    }));
     if (chk.a.moved) log(st, M('log_wild_moved', { pi }));
     return afterLay(st, pi, { meldId: targetId });
   }
@@ -1764,8 +1767,8 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
     log_draw_red: '{name} si líže z balíčku a vykládá červenou trojku ({n}×).',
     log_draw_red_you: 'Lížeš z balíčku a vykládáš červenou trojku ({n}×).',
     log_stock_out: 'Lízací balíček došel, kolo končí.',
-    log_take_pile: (p) => `${p.name} vykládá ${p.card} z hromádky a bere ji (${p.n} ${csPl(p.n, 'karta', 'karty', 'karet')}).`,
-    log_take_pile_you: (p) => `Vykládáš ${p.card} z hromádky a bereš ji (${p.n} ${csPl(p.n, 'karta', 'karty', 'karet')}).`,
+    log_take_pile: (p) => `${p.name} ${p.add ? `přikládá ${p.card} z hromádky ke své vykládce${p.with ? ` (s ${p.with})` : ''}` : `vykládá ${p.card} z hromádky${p.with ? ` s ${p.with}` : ''}`} a bere ji (${p.n} ${csPl(p.n, 'karta', 'karty', 'karet')}).`,
+    log_take_pile_you: (p) => `${p.add ? `Přikládáš ${p.card} z hromádky ke své vykládce${p.with ? ` (s ${p.with})` : ''}` : `Vykládáš ${p.card} z hromádky${p.with ? ` s ${p.with}` : ''}`} a bereš ji (${p.n} ${csPl(p.n, 'karta', 'karty', 'karet')}).`,
     log_pass: '{name} si hromádku nebere. Kolo končí.', log_pass_you: 'Hromádku si nebereš. Kolo končí.',
     log_meld_set: (p) => `${p.name} vykládá skupinu (${p.n} ${csPl(p.n, 'karta', 'karty', 'karet')}).`,
     log_meld_set_you: (p) => `Vykládáš skupinu (${p.n} ${csPl(p.n, 'karta', 'karty', 'karet')}).`,
@@ -2068,7 +2071,7 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
       </ul>
       <h3>Tah</h3>
       <ul>
-        <li>Lízneš z balíčku, nebo vezmeš celou hromádku. Hromádku jen tak, že její vrchní kartu hned vyložíš s kartami z ruky nebo ji přiložíš ke své vykládce.</li>
+        <li>Lízneš z balíčku, nebo vezmeš celou hromádku. Hromádku jen tak, že její vrchní kartu hned vyložíš s kartami z ruky (klidně i se žolíkem) nebo ji přiložíš ke své vykládce.</li>
         <li>Odhozená černá trojka, dvojka nebo joker hromádku zablokuje.</li>
         <li>Červené trojky se samy vyloží a dolízne se za ně karta.</li>
         <li>Zavřeš, když ti nezůstane žádná karta a máš aspoň jednu canastu.</li>
@@ -2180,8 +2183,8 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
     log_draw_red: '{name} draws from the stock and lays down a red three ({n}×).',
     log_draw_red_you: 'You draw from the stock and lay down a red three ({n}×).',
     log_stock_out: 'The stock ran out. The round ends.',
-    log_take_pile: (p) => `${p.name} melds ${p.card} from the pile and takes it (${p.n} card${enS(p.n)}).`,
-    log_take_pile_you: (p) => `You meld ${p.card} from the pile and take it (${p.n} card${enS(p.n)}).`,
+    log_take_pile: (p) => `${p.name} ${p.add ? `adds ${p.card} from the pile to a meld${p.with ? ` (with ${p.with})` : ''}` : `melds ${p.card} from the pile${p.with ? ` with ${p.with}` : ''}`} and takes it (${p.n} card${enS(p.n)}).`,
+    log_take_pile_you: (p) => `You ${p.add ? `add ${p.card} from the pile to your meld${p.with ? ` (with ${p.with})` : ''}` : `meld ${p.card} from the pile${p.with ? ` with ${p.with}` : ''}`} and take it (${p.n} card${enS(p.n)}).`,
     log_pass: '{name} passes on the pile. The round ends.', log_pass_you: 'You pass on the pile. The round ends.',
     log_meld_set: '{name} melds a set of {n}.', log_meld_set_you: 'You meld a set of {n}.',
     log_meld_seq: '{name} melds a run of {n}.', log_meld_seq_you: 'You meld a run of {n}.',
@@ -2482,7 +2485,7 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
       </ul>
       <h3>Your turn</h3>
       <ul>
-        <li>Draw from the stock, or take the whole discard pile. You may take the pile only by melding its top card right away with cards from your hand, or by adding it to one of your melds.</li>
+        <li>Draw from the stock, or take the whole discard pile. You may take the pile only by melding its top card right away with cards from your hand (a wild card is fine), or by adding it to one of your melds.</li>
         <li>A discarded black three, two or joker blocks the pile.</li>
         <li>Red threes are laid down automatically and replaced with a new card.</li>
         <li>You go out when you have no cards left and at least one canasta.</li>
@@ -2594,8 +2597,8 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
     log_draw_red: '{name} compra do monte e baixa um três vermelho ({n}×).',
     log_draw_red_you: 'Você compra do monte e baixa um três vermelho ({n}×).',
     log_stock_out: 'O monte acabou. A rodada termina.',
-    log_take_pile: (p) => `${p.name} baixa ${p.card} do lixo e pega o lixo (${p.n} carta${p.n === 1 ? '' : 's'}).`,
-    log_take_pile_you: (p) => `Você baixa ${p.card} do lixo e pega o lixo (${p.n} carta${p.n === 1 ? '' : 's'}).`,
+    log_take_pile: (p) => `${p.name} ${p.add ? `encaixa ${p.card} do lixo num jogo${p.with ? ` (com ${p.with})` : ''}` : `baixa ${p.card} do lixo${p.with ? ` com ${p.with}` : ''}`} e pega o lixo (${p.n} carta${p.n === 1 ? '' : 's'}).`,
+    log_take_pile_you: (p) => `Você ${p.add ? `encaixa ${p.card} do lixo no seu jogo${p.with ? ` (com ${p.with})` : ''}` : `baixa ${p.card} do lixo${p.with ? ` com ${p.with}` : ''}`} e pega o lixo (${p.n} carta${p.n === 1 ? '' : 's'}).`,
     log_pass: '{name} não pega o lixo. A rodada termina.', log_pass_you: 'Você não pega o lixo. A rodada termina.',
     log_meld_set: '{name} baixa uma trinca de {n}.', log_meld_set_you: 'Você baixa uma trinca de {n}.',
     log_meld_seq: '{name} baixa uma sequência de {n}.', log_meld_seq_you: 'Você baixa uma sequência de {n}.',
@@ -2896,7 +2899,7 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
       </ul>
       <h3>Sua jogada</h3>
       <ul>
-        <li>Compre do monte ou pegue o lixo inteiro. Só dá para pegar o lixo baixando na hora a carta de cima com cartas da mão, ou adicionando-a a um dos seus jogos.</li>
+        <li>Compre do monte ou pegue o lixo inteiro. Só dá para pegar o lixo baixando na hora a carta de cima com cartas da mão (pode ser com curinga), ou adicionando-a a um dos seus jogos.</li>
         <li>Um três preto, dois ou joker descartado trava o lixo.</li>
         <li>Os três vermelhos são baixados automaticamente e você compra outra carta no lugar.</li>
         <li>Você bate quando fica sem cartas e tem pelo menos uma canastra.</li>
@@ -3152,6 +3155,7 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
       p.name = nameOf(p.pi);
     }
     if (p.card) p.card = cardLabel(p.card);
+    if (Array.isArray(p.with)) p.with = p.with.map(cardLabel).join(' ');
     return t(k, p);
   }
   const fmt = (n) => Number(n || 0).toLocaleString(LOCALE[prefs.lang] || 'cs-CZ');

@@ -99,6 +99,7 @@
       p.name = nameOf(p.pi);
     }
     if (p.card) p.card = cardLabel(p.card);
+    if (Array.isArray(p.with)) p.with = p.with.map(cardLabel).join(' ');
     return t(k, p);
   }
   const fmt = (n) => Number(n || 0).toLocaleString(LOCALE[prefs.lang] || 'cs-CZ');

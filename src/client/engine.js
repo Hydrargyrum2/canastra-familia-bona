@@ -383,7 +383,10 @@
     st.turn.mustMeld = null;
     st.turn.from = 'pile';
     st.phase = 'play';
-    log(st, M('log_take_pile', { pi, card: { r: chk.top.r, s: chk.top.s }, n: count }));
+    log(st, M('log_take_pile', {
+      pi, card: { r: chk.top.r, s: chk.top.s }, n: count,
+      add: !!chk.meld, with: chk.handCards.map((c) => ({ r: c.r, s: c.s })),
+    }));
     if (chk.a.moved) log(st, M('log_wild_moved', { pi }));
     return afterLay(st, pi, { meldId: targetId });
   }
