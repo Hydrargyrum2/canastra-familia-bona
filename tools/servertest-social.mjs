@@ -1,5 +1,5 @@
 // Test: přátelé, profily, historie, vzájemné zápasy, ztlumení, obrázky, přezdívka, heslo, smazání účtu,
-// upozornění (uložení předplatného) a limit na tah. Server: npx wrangler dev --var BOT_DELAY_MS:5 --var DC_MS:1500 --var TURN_MS:4000
+// upozornění (uložení předplatného) a limit na tah. Server: npx wrangler dev --var BOT_DELAY_MS:5 --var DC_MS:1500 --var TURN_MS:4000 (nebo jiný krátký limit)
 import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
 const E = require('../src/client/engine.js');
@@ -161,7 +161,7 @@ async function main() {
   await t1.wait((m) => m.t === 'state' && m.s.seats.every(Boolean));
   t1.send({ t: 'start' });
   const st0 = await t1.wait((m) => m.t === 'state' && m.s.status === 'playing');
-  check(st0.s.turnDeadline > st0.s.now && st0.s.turnDeadline - st0.s.now <= 4000, 'stav obsahuje konec limitu na tah');
+  check(st0.s.turnDeadline > st0.s.now && st0.s.turnDeadline - st0.s.now <= 120000, 'stav obsahuje konec limitu na tah');
   // P1 nedělá nic, P2 hraje rychle
   const idle = st0.s.game.current === 0 ? t1 : t2;
   const active = idle === t1 ? t2 : t1;

@@ -20,8 +20,7 @@
   let ME = 0;
   let st = null;
   let mode = '1v1';
-  let overlay = null; // start | menu | rules | settings | pile | log | round | wild | auth | online | room
-  let prevOverlay = null;
+  let overlay = null; // start | menu | rules | settings | app | pile | log | round | wild | auth | room | friends | players | profile | account | avatar | privacy | tutintro
   // instalace aplikace (PWA)
   let installEvt = null; // uložená výzva prohlížeče k instalaci
   let appInstalled = false;
@@ -53,7 +52,23 @@
     chat: [], chatOpen: false, unread: 0, emoteOpen: false,
     invites: [], players: [], leaders: [], tab: 'players', search: '',
     authTab: 'login', authErr: '', joinErr: '', adminMsg: '', invited: {}, joinAfterLogin: null,
+    mutes: [], muted: [], requests: 0, friends: { friends: [], incoming: [], outgoing: [] },
+    profile: null, profileId: null, ptab: 'search', forgot: false, formMsg: {}, skew: 0,
   };
+  const CONTACT = ['faldik2033', 'seznam.cz'].join('@');
+  // stránky, ze kterých se vrací tlačítkem Zpět (nebo klepnutím vedle)
+  const PAGES = ['rules', 'settings', 'app', 'friends', 'players', 'profile', 'account', 'avatar', 'privacy', 'tutintro'];
+  let nav = [];
+  let localStarted = false; // hra proti robotům, kterou hráč opravdu začal
+  let tut = { on: false, hidden: false, slide: 0 };
+  const AVATARS = [
+    { k: 'parrot', e: '🦜', c: '#1f8a5b' }, { k: 'jaguar', e: '🐆', c: '#b07a16' }, { k: 'turtle', e: '🐢', c: '#2a7f62' },
+    { k: 'fox', e: '🦊', c: '#c45a26' }, { k: 'frog', e: '🐸', c: '#4f8f35' }, { k: 'panda', e: '🐼', c: '#4d5560' },
+    { k: 'lion', e: '🦁', c: '#a87a22' }, { k: 'octopus', e: '🐙', c: '#9a3f68' }, { k: 'palm', e: '🌴', c: '#2c6f63' },
+    { k: 'ball', e: '⚽', c: '#2d5aa0' }, { k: 'guitar', e: '🎸', c: '#8a3b2c' }, { k: 'coffee', e: '☕', c: '#6b4a33' },
+    { k: 'joker', e: '🃏', c: '#5d3a8a' }, { k: 'spade', e: '♠️', c: '#26343e' }, { k: 'heart', e: '♥️', c: '#9b2c34' },
+    { k: 'clover', e: '🍀', c: '#2f8a4a' }, { k: 'crown', e: '👑', c: '#8f711a' }, { k: 'sun', e: '☀️', c: '#b8720f' },
+  ];
 
   // ---------- jazyk ----------
   function detectLang() {
@@ -157,7 +172,7 @@
   }
   function save() {
     if (online()) return;
-    try { localStorage.setItem(SAVE_KEY, JSON.stringify({ st, mode })); } catch (e) { /* bez úložiště */ }
+    try { localStorage.setItem(SAVE_KEY, JSON.stringify({ st, mode, tut: tut.on ? { on: true, hidden: tut.hidden } : null })); } catch (e) { /* bez úložiště */ }
   }
   function load() {
     try { return JSON.parse(localStorage.getItem(SAVE_KEY) || 'null'); } catch (e) { return null; }
@@ -296,7 +311,10 @@
         hint += ` <span class="badge">${esc(t('open_badge', { v: st.turn.laid, min: E.RULES.openMin }))}</span>`;
       }
     }
-    return `<span class="hint">${hint}</span>`;
+    const v = online() ? net.view : null;
+    const timer = v && v.turnDeadline && (st.phase === 'draw' || st.phase === 'play')
+      ? ` <span class="ttimer ${myTurn() ? 'mine' : ''}" data-deadline="${v.turnDeadline}" data-show="30000"></span>` : '';
+    return `<span class="hint">${hint}</span>${timer}`;
   }
 
   function myHand() {
@@ -321,6 +339,9 @@
     if (st.phase === 'waiting') return `<button class="btn primary" data-act="openroom">${esc(t('room_open'))}</button>`;
     if (st.phase === 'roundOver' || st.phase === 'gameOver') {
       return `<button class="btn primary" data-act="openround">${esc(t(st.phase === 'gameOver' ? 'btn_result_game' : 'btn_result_round'))}</button>`;
+    }
+    if (online() && net.view && net.view.seats[ME] && net.view.seats[ME].away) {
+      return `<div class="awaybar">🤖 ${esc(t('bot_plays_for_you'))}</div><button class="btn primary" data-act="imback">${esc(t('im_back'))}</button>`;
     }
     if (!myTurn()) return `<div class="wait"><span class="dots">${esc(t('playing', { name: nameOf(st.current) }))}</span></div>`;
     if (st.phase === 'draw') {
@@ -367,7 +388,6 @@
       ${prefs.sfx ? slider('sfxVol') : ''}
       ${S.canVibrate ? `<h3>${esc(t('settings_vibrate'))}</h3>${onOff('vibrate')}` : ''}`;
   }
-  function pushSettingsHTML() { return ''; }
   function settingsHTML() {
     return `<h2>${esc(t('settings'))}</h2>
       <h3>${esc(t('settings_lang'))}</h3>
@@ -421,9 +441,10 @@
       } else {
         const humans = v.seats.map((x, i) => ({ x, i })).filter(({ x }) => x && x.kind === 'human' && x.connected && !x.botControl);
         const ready = humans.filter(({ i }) => v.ready[i]).length;
+        const auto = v.readyDeadline ? `<p class="seghint" data-deadline="${v.readyDeadline}" data-prefix="auto_next"></p>` : '';
         buttons = v.ready[ME]
-          ? `<p class="seghint">${esc(t('wait_others', { n: ready, m: humans.length }))}</p><button class="btn" data-act="close">${esc(t('look_table'))}</button>`
-          : `<button class="btn primary" data-act="nextround">${esc(t('next_round'))}</button><button class="btn" data-act="close">${esc(t('look_table'))}</button>`;
+          ? `<p class="seghint">${esc(t('wait_others', { n: ready, m: humans.length }))}</p>${auto}<button class="btn" data-act="close">${esc(t('look_table'))}</button>`
+          : `<button class="btn primary" data-act="nextround">${esc(t('next_round'))}</button>${auto}<button class="btn" data-act="close">${esc(t('look_table'))}</button>`;
       }
     } else {
       buttons = st.phase === 'gameOver'
@@ -445,25 +466,65 @@
       <div class="stackbtns">${buttons}</div>`;
   }
 
+  // ---------- obrázky hráčů ----------
+  function avColor(id) {
+    const cs = ['#2c6f63', '#8a3b2c', '#2d5aa0', '#7a5a1d', '#5d3a8a', '#2f7a42', '#9a3f68', '#46525e'];
+    return cs[Math.abs(Number(id) || 0) % cs.length];
+  }
+  function avatarHTML(u, size) {
+    const sz = size || 36;
+    if (!u) return `<span class="av" style="--s:${sz}px;background:#46525e">?</span>`;
+    if (u.avatar === 'img') return `<img class="av" style="--s:${sz}px" src="/api/avatar?id=${u.id}&v=${u.av || 0}" alt="" loading="lazy">`;
+    const p = u.avatar && AVATARS.find((x) => 'p:' + x.k === u.avatar);
+    if (p) return `<span class="av emo" style="--s:${sz}px;background:${p.c}" aria-hidden="true">${p.e}</span>`;
+    const ch = String(u.name || '?').trim().charAt(0).toUpperCase();
+    return `<span class="av" style="--s:${sz}px;background:${avColor(u.id)}" aria-hidden="true">${esc(ch)}</span>`;
+  }
+
   function startHTML() {
-    const fanCards = [{ r: 'K', s: 'S' }, { r: 'A', s: 'H' }, { r: '4', s: 'D' }, { r: '2', s: 'C' }, { r: 'JK', s: null }];
-    const rots = [-14, -7, 0, 7, 14];
-    const onlineBtn = net.available
-      ? `<button class="btn online" data-act="goonline">${esc(net.user ? t('online_btn_user', { name: net.user.name }) : t('online_btn'))}</button>`
-      : `<p class="seghint">${esc(t('online_unavailable'))} <a href="${SITE_URL}" target="_blank" rel="noopener">${SITE_URL.replace('https://', '')}</a></p>`;
+    const u = net.user;
+    let onl = '';
+    if (!net.available) {
+      onl = `<p class="seghint">${esc(t('online_unavailable'))} <a href="${SITE_URL}" target="_blank" rel="noopener">${SITE_URL.replace('https://', '')}</a></p>`;
+    } else if (!u) {
+      onl = `<div class="loginbox"><p>${esc(t('home_login_lead'))}</p>
+        <button class="btn online" data-act="goonline">${esc(t('home_login'))}</button></div>`;
+    } else {
+      onl = `<button class="mecard" data-act="profile" data-v="${u.id}">
+          ${avatarHTML(u, 48)}<span class="mc-main"><b>${esc(u.name)}</b><span>🏆 ${fmt(u.rating)} · ${esc(t('my_profile'))} ›</span></span></button>
+        ${u.table ? `<button class="btn primary" data-act="jointable" data-v="${esc(u.table)}">${esc(t('continue_table', { code: u.table }))}</button>` : ''}
+        <h3>${esc(t('home_friends'))}</h3>
+        <div class="grid2">
+          <button class="btn ${u.table ? '' : 'primary'}" data-act="create" data-v="1v1">${esc(t('create_1v1'))}</button>
+          <button class="btn" data-act="create" data-v="2v2">${esc(t('create_2v2'))}</button>
+        </div>
+        <form class="joinrow" id="joinForm"><input id="joinCode" maxlength="6" placeholder="${esc(t('join_code'))}" autocomplete="off" aria-label="${esc(t('join_code'))}"><button class="btn" type="submit">${esc(t('join'))}</button></form>
+        ${net.joinErr ? `<p class="formerr">${esc(net.joinErr)}</p>` : ''}
+        <div class="grid2">
+          <button class="btn tile" data-act="friends">👥 ${esc(t('friends'))}${net.requests ? `<span class="nb">${net.requests}</span>` : ''}</button>
+          <button class="btn tile" data-act="players">🔎 ${esc(t('players_title'))}</button>
+        </div>`;
+    }
+    const cont = localStarted && !online() && st && st.phase !== 'gameOver' && st.phase !== 'waiting';
     return `
       ${langButtons()}
-      <div class="hero-cards" aria-hidden="true">${fanCards.map((c, i) => cardFace(c, `--rot:${rots[i]}deg`)).join('')}</div>
+      <div class="hero-cards ${u ? 'small' : ''}" aria-hidden="true">${[{ r: 'K', s: 'S' }, { r: 'A', s: 'H' }, { r: '4', s: 'D' }, { r: '2', s: 'C' }, { r: 'JK', s: null }].map((c, i) => cardFace(c, `--rot:${[-14, -7, 0, 7, 14][i]}deg`)).join('')}</div>
       <h2 class="title-xl">${esc(t('title'))}</h2>
-      <p>${esc(t('start_lead'))}</p>
-      ${onlineBtn}
+      ${u ? '' : `<p>${esc(t('start_lead'))}</p>`}
+      ${onl}
       <h3>${esc(t('vs_bots'))}</h3>
+      ${cont ? `<button class="btn" data-act="close">${esc(t(tut.on ? 'continue_tut' : 'continue_local'))}</button>` : ''}
       ${levelButtons()}
-      <div class="stackbtns">
-        <button class="btn primary" data-act="new1">${esc(t('start_1v1'))}</button>
+      <div class="grid2">
+        <button class="btn ${u || cont ? '' : 'primary'}" data-act="new1">${esc(t('start_1v1'))}</button>
         <button class="btn" data-act="new2">${esc(t('start_2v2'))}</button>
-        <button class="linkbtn" data-act="rules">${esc(t('read_rules'))}</button>
-        ${isStandalone() ? '' : `<button class="${installEvt ? 'btn appbtn' : 'linkbtn'}" data-act="app">${esc(t(installEvt ? 'app_install' : 'app_btn'))}</button>`}
+      </div>
+      <button class="btn tut" data-act="tutorial">🎓 ${esc(t('tut_btn'))}</button>
+      <div class="footrow">
+        <button class="mini ghost" data-act="settings">⚙️ ${esc(t('settings'))}</button>
+        <button class="mini ghost" data-act="rules">📖 ${esc(t('rules'))}</button>
+        ${isStandalone() ? '' : `<button class="mini ghost ${installEvt ? 'hl' : ''}" data-act="app">📲 ${esc(t('app_short'))}</button>`}
+        <button class="mini ghost" data-act="privacy">🔒 ${esc(t('privacy_short'))}</button>
       </div>`;
   }
 
@@ -505,19 +566,18 @@
           <button class="btn" data-act="${net.view && net.view.status === 'playing' && net.view.me.seat !== -1 ? 'leaveask' : 'leavetable'}">${esc(t('leave_table'))}</button>
           <button class="btn" data-act="settings">${esc(t('settings'))}</button>
           <button class="btn" data-act="rules">${esc(t('rules'))}</button>
-          ${isStandalone() ? '' : `<button class="btn" data-act="app">${esc(t('app_btn'))}</button>`}
         </div>`;
     }
     return `
       <h2>${esc(t('menu'))}</h2>
       <div class="stackbtns">
         <button class="btn primary" data-act="close">${esc(t('keep_playing'))}</button>
-        ${net.available ? `<button class="btn online" data-act="goonline">${esc(t('online_btn'))}</button>` : ''}
+        <button class="btn" data-act="tostart">🏠 ${esc(t('main_menu'))}</button>
+        ${tut.on ? `<button class="btn" data-act="tuthint">💡 ${esc(t(tut.hidden ? 'tut_show' : 'tut_hide'))}</button>` : ''}
         <button class="btn" data-act="new1">${esc(t('new1'))}</button>
         <button class="btn" data-act="new2">${esc(t('new2'))}</button>
         <button class="btn" data-act="settings">${esc(t('settings'))}</button>
         <button class="btn" data-act="rules">${esc(t('rules'))}</button>
-        ${isStandalone() ? '' : `<button class="btn" data-act="app">${esc(t('app_btn'))}</button>`}
       </div>`;
   }
 
@@ -558,7 +618,9 @@
         <input id="authName" name="username" autocomplete="username" maxlength="20" required>
         <label for="authPass">${esc(t('pass_label'))}</label>
         <input id="authPass" name="password" type="password" autocomplete="${reg ? 'new-password' : 'current-password'}" maxlength="100" required>
-        ${reg ? `<p class="seghint">${esc(t('register_hint'))}</p>` : `<p class="seghint">${esc(t('forgot'))}</p>`}
+        ${reg ? `<p class="seghint">${esc(t('register_hint'))}</p>` : (net.forgot
+          ? `<p class="note">${esc(t('forgot_text'))} <a href="mailto:${CONTACT}?subject=${encodeURIComponent('Canastra família Bona')}">${CONTACT}</a></p>`
+          : `<button class="linkbtn" type="button" data-act="forgot">${esc(t('forgot_q'))}</button>`)}
         ${net.authErr ? `<p class="formerr" role="alert">${esc(net.authErr)}</p>` : ''}
         <button class="btn primary" type="submit">${esc(reg ? t('register') : t('login'))}</button>
       </form>
@@ -569,57 +631,235 @@
     return `<span class="dot ${status}" aria-hidden="true"></span>`;
   }
   function playerRow(p, withInvite) {
-    const status = p.id === net.user.id ? 'online' : statusOf(p.id);
-    const label = t('status_' + status);
+    const self = p.id === net.user.id;
+    const status = self ? 'online' : statusOf(p.id);
     const inv = net.invited[p.id];
-    const btn = withInvite && p.id !== net.user.id
+    const btn = withInvite && !self && status !== 'offline'
       ? `<button class="mini" data-act="invite" data-v="${p.id}" ${inv ? 'disabled' : ''}>${esc(inv ? t('invited') : t('invite'))}</button>` : '';
-    return `<li class="prow">${dot(status)}<span class="pname">${esc(p.name)}${p.id === net.user.id ? ` <em>(${esc(t('you_short'))})</em>` : ''}</span>
-      <span class="pmeta">${esc(label)} · 🏆 ${fmt(p.rating)}</span>${btn}</li>`;
+    return `<li class="prow"><button class="pbtn" data-act="profile" data-v="${p.id}">${avatarHTML(p, 34)}${dot(status)}
+      <span class="pname">${esc(p.name)}${self ? ` <em>(${esc(t('you_short'))})</em>` : ''}</span>
+      <span class="pmeta">${esc(t('status_' + status))} · 🏆 ${fmt(p.rating)}</span></button>${btn}</li>`;
   }
   function statusOf(id) {
     const o = net.onlineMap[id];
     return o ? (o.status === 'table' ? 'table' : 'online') : 'offline';
   }
+  const byStatus = (a, b) => {
+    const r = { online: 0, table: 1, offline: 2 };
+    return r[statusOf(a.id)] - r[statusOf(b.id)] || a.name.localeCompare(b.name);
+  };
   function playersListHTML(withInvite) {
-    const list = net.players.slice().sort((a, b) => {
-      const r = { online: 0, table: 1, offline: 2 };
-      return r[statusOf(a.id)] - r[statusOf(b.id)] || a.name.localeCompare(b.name);
-    });
-    return `<input id="playerSearch" class="search" placeholder="${esc(t('search_ph'))}" value="${esc(net.search)}" autocomplete="off">
+    const list = net.players.slice().sort(byStatus);
+    return `<input id="playerSearch" class="search" type="search" placeholder="${esc(t('search_ph'))}" value="${esc(net.search)}" autocomplete="off">
       <ul class="plist">${list.length ? list.map((p) => playerRow(p, withInvite)).join('') : `<li class="empty">${esc(t('no_players'))}</li>`}</ul>`;
   }
   function leadersHTML() {
     if (!net.leaders.length) return `<p class="empty">${esc(t('leaders_empty'))}</p>`;
-    return `<ol class="lead">${net.leaders.map((p, i) => `<li class="${p.id === net.user.id ? 'me' : ''}"><span class="rk">${i + 1}.</span><span class="pname">${esc(p.name)}</span><span class="pmeta">${fmt(p.wins)}/${fmt(p.games)}</span><b>🏆 ${fmt(p.rating)}</b></li>`).join('')}</ol>`;
+    return `<ol class="lead">${net.leaders.map((p, i) => `<li class="${p.id === net.user.id ? 'me' : ''}"><button class="pbtn" data-act="profile" data-v="${p.id}"><span class="rk">${i + 1}.</span>${avatarHTML(p, 30)}<span class="pname">${esc(p.name)}</span><span class="pmeta">${fmt(p.wins)}/${fmt(p.games)}</span><b>🏆 ${fmt(p.rating)}</b></button></li>`).join('')}</ol>`;
   }
-  function onlineHTML() {
+  const back = (label) => `<div class="stackbtns"><button class="btn" data-act="back">${esc(t(label || 'back'))}</button></div>`;
+
+  // ---------- přátelé ----------
+  function pushNudgeHTML() {
+    if (!pushSupported() || prefs.push || Notification.permission === 'denied') return '';
+    return `<div class="nudge">🔔 ${esc(t('push_nudge'))} <button class="mini" data-act="pushon">${esc(t('push_enable'))}</button></div>`;
+  }
+  function friendsHTML() {
+    const f = net.friends;
+    const row = (p, btns) => `<li class="prow"><button class="pbtn" data-act="profile" data-v="${p.id}">${avatarHTML(p, 34)}${dot(statusOf(p.id))}
+      <span class="pname">${esc(p.name)}</span><span class="pmeta">${esc(t('status_' + statusOf(p.id)))} · 🏆 ${fmt(p.rating)}</span></button>${btns}</li>`;
+    const inc = f.incoming.length ? `<h3>${esc(t('friend_requests'))}</h3><ul class="plist">${f.incoming.map((p) => row(p,
+      `<span class="rowbtns"><button class="mini" data-act="facc" data-v="${p.id}">${esc(t('accept'))}</button><button class="mini ghost" data-act="fdec" data-v="${p.id}">${esc(t('decline'))}</button></span>`)).join('')}</ul>` : '';
+    const list = f.friends.slice().sort(byStatus);
+    const fr = list.length
+      ? `<ul class="plist">${list.map((p) => row(p, statusOf(p.id) !== 'offline'
+        ? `<button class="mini" data-act="invite" data-v="${p.id}" ${net.invited[p.id] ? 'disabled' : ''}>${esc(net.invited[p.id] ? t('invited') : t('invite'))}</button>` : '')).join('')}</ul>`
+      : `<p class="empty">${esc(t('no_friends'))}</p>`;
+    const out = f.outgoing.length ? `<h3>${esc(t('friend_sent'))}</h3><ul class="plist">${f.outgoing.map((p) => row(p,
+      `<button class="mini ghost" data-act="fdel" data-v="${p.id}">${esc(t('cancel'))}</button>`)).join('')}</ul>` : '';
+    return `<h2>👥 ${esc(t('friends'))}</h2>
+      ${pushNudgeHTML()}
+      ${inc}
+      <h3>${esc(t('friends_n', { n: list.length }))}</h3>
+      ${fr}
+      <button class="btn" data-act="players">🔎 ${esc(t('find_players'))}</button>
+      ${out}
+      ${back()}`;
+  }
+
+  // ---------- hráči a žebříček ----------
+  function playersHTML() {
+    const tab = net.ptab;
+    return `<h2>🔎 ${esc(t('players_title'))}</h2>
+      <div class="seg tabs">
+        <button class="segbtn ${tab === 'search' ? 'on' : ''}" data-act="ptab" data-v="search">${esc(t('tab_search'))}</button>
+        <button class="segbtn ${tab === 'leaders' ? 'on' : ''}" data-act="ptab" data-v="leaders">${esc(t('tab_leaders'))}</button>
+      </div>
+      ${tab === 'search' ? `<p class="seghint">${esc(t('players_hint'))}</p>${playersListHTML(true)}` : `<p class="seghint">${esc(t('leaders_hint'))}</p>${leadersHTML()}`}
+      ${back()}`;
+  }
+
+  // ---------- profil ----------
+  function fmtDate(ms) {
+    try { return new Date(ms).toLocaleDateString(LOCALE[prefs.lang] || 'cs-CZ', { day: 'numeric', month: 'numeric', year: 'numeric' }); } catch (e) { return ''; }
+  }
+  function histHTML(list) {
+    if (!list.length) return `<p class="empty">${esc(t('no_history'))}</p>`;
+    return `<ul class="hist">${list.map((h) => {
+      const opps = h.opps.map((o) => o.name).join(', ');
+      const res = { win: 'res_win', loss: 'res_loss', draw: 'res_draw', left: 'res_left' }[h.result] || 'res_loss';
+      return `<li class="${h.result}"><span class="hres">${esc(t(res))}</span>
+        <span class="hmain"><b>${esc(t('vs', { names: opps }))}</b>${h.partner ? `<em>${esc(t('with_partner', { name: h.partner.name }))}</em>` : ''}
+        <span class="pmeta">${esc(fmtDate(h.at))} · ${esc(t(h.mode === '2v2' ? 'mode_2v2' : 'mode_1v1'))} · ${fmt(h.my)} : ${fmt(h.opp)}</span></span>
+        ${h.rated ? `<span class="hdelta ${h.delta >= 0 ? 'up' : 'down'}">${h.delta > 0 ? '+' : ''}${h.delta} 🏆</span>` : `<span class="hdelta">🤖</span>`}</li>`;
+    }).join('')}</ul>`;
+  }
+  function profileHTML() {
+    const pr = net.profile;
+    if (!pr || pr.user.id !== net.profileId) return `<h2>${esc(t('loading'))}</h2><p class="dots"></p>${back()}`;
+    const u = pr.user;
+    const self = pr.friend === 'self';
+    const status = self ? 'online' : statusOf(u.id) !== 'offline' ? statusOf(u.id) : (pr.status === 'table' ? 'table' : pr.status === 'lobby' ? 'online' : 'offline');
+    const pct = u.games ? Math.round((u.wins / u.games) * 100) : 0;
+    const stats = `<div class="statgrid">
+        <div class="big"><b>🏆 ${fmt(u.rating)}</b><span>${esc(t('trophies'))}</span></div>
+        <div><b>${fmt(u.games)}</b><span>${esc(t('st_games'))}</span></div>
+        <div><b>${fmt(u.wins)}</b><span>${esc(t('st_wins'))}</span></div>
+        <div><b>${fmt(u.losses)}</b><span>${esc(t('st_losses'))}</span></div>
+        <div><b>${pct} %</b><span>${esc(t('st_pct'))}</span></div>
+      </div>
+      <p class="seghint">${esc(t('st_humans_note'))}</p>
+      <div class="statgrid bots"><div><b>${fmt(u.bgames)}</b><span>${esc(t('st_bgames'))}</span></div><div><b>${fmt(u.bwins)}</b><span>${esc(t('st_wins'))}</span></div><div><b>${fmt(u.blosses)}</b><span>${esc(t('st_losses'))}</span></div></div>`;
+    let actions = '';
+    if (self) {
+      actions = `<div class="grid2"><button class="btn" data-act="account">✏️ ${esc(t('edit_profile'))}</button><button class="btn" data-act="logout">${esc(t('logout'))}</button></div>`;
+    } else {
+      const fb = {
+        none: `<button class="btn primary" data-act="freq" data-v="${u.id}">➕ ${esc(t('add_friend'))}</button>`,
+        out: `<button class="btn" data-act="fdel" data-v="${u.id}">${esc(t('request_sent'))} · ${esc(t('cancel'))}</button>`,
+        in: `<button class="btn primary" data-act="facc" data-v="${u.id}">${esc(t('accept_request'))}</button>`,
+        friends: `<button class="btn" data-act="fdel" data-v="${u.id}" data-confirm="1">✓ ${esc(t('is_friend'))} · ${esc(t('remove'))}</button>`,
+      }[pr.friend] || '';
+      const inv = status !== 'offline' ? `<button class="btn" data-act="invite" data-v="${u.id}" ${net.invited[u.id] ? 'disabled' : ''}>🎴 ${esc(net.invited[u.id] ? t('invited') : t('invite_game'))}</button>` : '';
+      const h = pr.h2h;
+      actions = `<h3>${esc(t('h2h_title'))}</h3>
+        ${h.games ? `<div class="h2h"><span>${esc(t('you_name'))}</span><b>${h.wins} : ${h.losses}</b><span>${esc(u.name)}</span></div><p class="seghint">${esc(t('h2h_games', { n: h.games }))}</p>` : `<p class="empty">${esc(t('h2h_none'))}</p>`}
+        <div class="stackbtns">${fb}${inv}
+          <button class="btn ghostbtn" data-act="mute" data-v="${u.id}" data-on="${pr.muted ? 0 : 1}">${esc(t(pr.muted ? 'unmute' : 'mute'))}</button>
+          ${net.user.admin && u.avatar === 'img' ? `<button class="btn danger" data-act="admavatar" data-v="${u.id}">${esc(t('admin_clear_avatar'))}</button>` : ''}
+        </div>`;
+    }
+    return `<div class="phead">${self ? `<button class="avedit" data-act="avatar" aria-label="${esc(t('change_avatar'))}">${avatarHTML(u, 84)}<i>✏️</i></button>` : avatarHTML(u, 84)}
+        <div><h2>${esc(u.name)}</h2><p class="pmeta">${dot(status)} ${esc(t('status_' + status))} · ${esc(t('member_since', { d: fmtDate(u.created) }))}</p></div></div>
+      ${stats}
+      ${actions}
+      <h3>${esc(t('last_games'))}</h3>
+      ${histHTML(pr.history)}
+      ${back()}`;
+  }
+
+  // ---------- úprava profilu ----------
+  function formMsg(id) {
+    const m = net.formMsg[id];
+    return m ? `<p class="${m.ok ? 'okline' : 'formerr'}" role="status">${esc(m.text)}</p>` : '';
+  }
+  function accountHTML() {
     const u = net.user;
-    const tab = net.tab;
     const admin = u.admin ? `<details class="admin"><summary>${esc(t('admin_title'))}</summary>
         <form class="form" id="adminForm"><label for="admName">${esc(t('name_label'))}</label><input id="admName" required>
         <label for="admPass">${esc(t('admin_newpass'))}</label><input id="admPass" required minlength="6">
         ${net.adminMsg ? `<p class="seghint">${esc(net.adminMsg)}</p>` : ''}
         <button class="btn" type="submit">${esc(t('admin_reset'))}</button></form></details>` : '';
-    return `<div class="ohead"><h2>${esc(t('hello', { name: u.name }))}</h2>
-        <p class="stats">🏆 ${fmt(u.rating)} · ${esc(t('my_stats', { games: fmt(u.games), wins: fmt(u.wins) }))}</p></div>
-      ${u.table ? `<button class="btn primary" data-act="jointable" data-v="${esc(u.table)}">${esc(t('continue_table', { code: u.table }))}</button>` : ''}
-      <div class="grid2">
-        <button class="btn ${u.table ? '' : 'primary'}" data-act="create" data-v="1v1">${esc(t('create_1v1'))}</button>
-        <button class="btn" data-act="create" data-v="2v2">${esc(t('create_2v2'))}</button>
-      </div>
-      <form class="joinrow" id="joinForm"><input id="joinCode" maxlength="6" placeholder="${esc(t('join_code'))}" autocomplete="off" aria-label="${esc(t('join_code'))}"><button class="btn" type="submit">${esc(t('join'))}</button></form>
-      ${net.joinErr ? `<p class="formerr">${esc(net.joinErr)}</p>` : ''}
-      <div class="seg tabs">
-        <button class="segbtn ${tab === 'players' ? 'on' : ''}" data-act="otab" data-v="players">${esc(t('tab_players'))}</button>
-        <button class="segbtn ${tab === 'leaders' ? 'on' : ''}" data-act="otab" data-v="leaders">${esc(t('tab_leaders'))}</button>
-      </div>
-      ${tab === 'players' ? `<p class="seghint">${esc(t('invite_hint'))}</p>${playersListHTML(true)}` : leadersHTML()}
+    const muted = net.muted.length
+      ? `<ul class="plist">${net.muted.map((m) => `<li class="prow"><span class="pname">${esc(m.name)}</span><button class="mini ghost" data-act="mute" data-v="${m.id}" data-on="0">${esc(t('unmute'))}</button></li>`).join('')}</ul>`
+      : `<p class="empty">${esc(t('no_muted'))}</p>`;
+    return `<h2>✏️ ${esc(t('edit_profile'))}</h2>
+      <div class="avrow">${avatarHTML(u, 64)}<button class="btn" data-act="avatar">${esc(t('change_avatar'))}</button></div>
+      <h3>${esc(t('nickname'))}</h3>
+      <form class="form" id="nameForm"><input id="newName" maxlength="20" required value="${esc(u.name)}" autocomplete="nickname">
+        ${formMsg('name')}<button class="btn" type="submit">${esc(t('save'))}</button></form>
+      <h3>${esc(t('password'))}</h3>
+      <form class="form" id="passForm"><label for="oldPass">${esc(t('old_password'))}</label><input id="oldPass" type="password" autocomplete="current-password" required>
+        <label for="newPass">${esc(t('new_password'))}</label><input id="newPass" type="password" autocomplete="new-password" minlength="6" required>
+        ${formMsg('pass')}<button class="btn" type="submit">${esc(t('change_password'))}</button></form>
+      ${pushSettingsHTML()}
+      <h3>${esc(t('muted_players'))}</h3>
+      ${muted}
       ${admin}
-      <div class="stackbtns">
-        <button class="btn" data-act="tostart">${esc(t('back_to_bots'))}</button>
-        <button class="linkbtn" data-act="logout">${esc(t('logout'))}</button>
+      <details class="danger-zone"><summary>${esc(t('delete_account'))}</summary>
+        <p class="seghint">${esc(t('delete_warn'))}</p>
+        <form class="form" id="delForm"><label for="delPass">${esc(t('pass_label'))}</label><input id="delPass" type="password" autocomplete="current-password" required>
+        ${formMsg('del')}<button class="btn danger" type="submit">${esc(t('delete_forever'))}</button></form></details>
+      ${back()}`;
+  }
+  function avatarPageHTML() {
+    const u = net.user;
+    return `<h2>${esc(t('change_avatar'))}</h2>
+      <div class="avprev">${avatarHTML(u, 96)}</div>
+      <div class="avgrid">${AVATARS.map((a) => `<button class="avpick ${u.avatar === 'p:' + a.k ? 'on' : ''}" data-act="avpick" data-v="p:${a.k}" style="background:${a.c}" aria-label="${a.k}">${a.e}</button>`).join('')}
+        <button class="avpick none ${!u.avatar ? 'on' : ''}" data-act="avpick" data-v="" aria-label="${esc(t('no_avatar'))}">${esc(String(u.name).charAt(0).toUpperCase())}</button></div>
+      <label class="btn upload">📷 ${esc(t('upload_photo'))}<input type="file" id="avatarFile" accept="image/*" hidden></label>
+      <p class="seghint">${esc(t('upload_hint'))}</p>
+      ${formMsg('avatar')}
+      ${back('done')}`;
+  }
+  function privacyHTML() {
+    return `<h2>🔒 ${esc(t('privacy_title'))}</h2>
+      ${D().privacy_html}
+      <p>${esc(t('privacy_contact'))} <a href="mailto:${CONTACT}">${CONTACT}</a></p>
+      <h3>${esc(t('credits'))}</h3><p class="seghint">${esc(t('credits_music'))}</p>
+      ${back()}`;
+  }
+
+  // ---------- výuka ----------
+  const TUT_SLIDES = 5;
+  function tutIntroHTML() {
+    const i = Math.max(0, Math.min(TUT_SLIDES - 1, tut.slide));
+    const last = i === TUT_SLIDES - 1;
+    return `<p class="seghint">${esc(t('tut_step', { n: i + 1, m: TUT_SLIDES }))}</p>
+      <h2>${esc(t('tut_s' + (i + 1) + '_t'))}</h2>
+      <p>${esc(t('tut_s' + (i + 1)))}</p>
+      ${i === 1 ? `<div class="tutcards">${[{ r: '5', s: 'H' }, { r: '6', s: 'H' }, { r: '7', s: 'H' }].map((c) => cardFace(c)).join('')}<span class="sep"></span>${[{ r: 'K', s: 'S' }, { r: 'K', s: 'D' }, { r: '2', s: 'C' }].map((c) => cardFace(c)).join('')}</div>` : ''}
+      <div class="grid2">
+        <button class="btn" data-act="${i ? 'tutprev' : 'back'}">${esc(t('back'))}</button>
+        <button class="btn primary" data-act="${last ? 'tutstart' : 'tutnext'}">${esc(t(last ? 'tut_start' : 'next'))}</button>
       </div>`;
+  }
+  // co poradit začátečníkovi právě teď
+  function coachTip() {
+    if (!tut.on || online() || !st) return null;
+    const lab = (ids) => ids.map((id) => myHand().find((c) => c.id === id)).filter(Boolean).map(cardLabel).join(' ');
+    if (st.phase === 'roundOver') return { text: t('coach_round') };
+    if (st.phase === 'gameOver') return { text: t('coach_over'), act: 'tostart', label: t('main_menu') };
+    if (!myTurn()) return { text: t('coach_wait', { name: nameOf(st.current) }) };
+    const team = st.teams[US()];
+    const openNote = E.needsOpen(team) ? ' ' + t('coach_open', { min: E.RULES.openMin, v: st.turn.laid || 0 }) : '';
+    if (st.phase === 'draw') {
+      const ch = B.pileChoice(st, ME);
+      const top = st.pile[st.pile.length - 1];
+      if (ch && top) return { text: t(ch.ids.length ? 'coach_pile' : 'coach_pile_meld', { card: cardLabel(top) }) + openNote, ids: ch.ids.length ? ch.ids : null, label: t('show_me') };
+      if (!st.stock.length) return { text: t('coach_stock_out') };
+      const err = E.pileError(st, ME);
+      return { text: t('coach_draw') + (top && err ? ' ' + t('coach_no_pile', { why: tr(err) }) : '') };
+    }
+    const a = B.greedyAction(st, ME);
+    if (a) {
+      return { text: t(a.type === 'add' ? 'coach_add' : 'coach_meld', { cards: lab(a.ids) }) + openNote, ids: a.ids, label: t('show_me') };
+    }
+    let d = null;
+    try { d = B.discardOrder(st, ME).find((id) => !E.discardError(st, ME, id)); } catch (e) { d = null; }
+    if (d == null) d = (myHand().find((c) => !E.discardError(st, ME, c.id)) || {}).id;
+    return { text: t('coach_discard') + (d != null ? ' ' + t('coach_discard_tip', { card: lab([d]) }) : ''), ids: d != null ? [d] : null, label: t('show_me') };
+  }
+  function renderCoach() {
+    const el = $('#coach');
+    if (!el) return;
+    const tip = tut.on && !online() && !tut.hidden ? coachTip() : null;
+    el.hidden = !tip;
+    if (!tip) { el.innerHTML = ''; return; }
+    const html = `<span class="ci">💡</span><span class="ct">${esc(tip.text)}</span>
+      <span class="cb">${tip.ids ? `<button class="mini" data-act="coachshow" data-v="${tip.ids.join(',')}">${esc(tip.label)}</button>` : ''}${tip.act ? `<button class="mini" data-act="${tip.act}">${esc(tip.label)}</button>` : ''}<button class="mini ghost" data-act="tuthint" aria-label="${esc(t('tut_hide'))}">✕</button></span>`;
+    if (el.dataset.html !== html) { el.dataset.html = html; el.innerHTML = html; }
   }
 
   function roomHTML() {
@@ -654,6 +894,7 @@
       <ul class="seats">${seats}</ul>
       ${isHost ? `<button class="btn primary" data-act="start" ${full ? '' : 'disabled'}>${esc(t('start_game'))}</button>${full ? '' : `<p class="seghint">${esc(t('need_full'))}</p>`}`
         : `<p class="seghint">${esc(t('wait_host'))}</p>`}
+      ${net.friends.friends.length ? `<h3>${esc(t('invite_friends'))}</h3><ul class="plist">${net.friends.friends.slice().sort(byStatus).map((p) => playerRow(p, true)).join('')}</ul>` : ''}
       <h3>${esc(t('invite_players'))}</h3>
       ${playersListHTML(true)}
       <div class="stackbtns"><button class="btn" data-act="leavetable">${esc(t('leave_table'))}</button></div>`;
@@ -674,12 +915,18 @@
     else if (overlay === 'round') html = roundHTML();
     else if (overlay === 'wild') html = wildHTML();
     else if (overlay === 'auth') html = authHTML();
-    else if (overlay === 'online' && net.user) html = onlineHTML();
     else if (overlay === 'room') html = roomHTML();
+    else if (overlay === 'friends' && net.user) html = friendsHTML();
+    else if (overlay === 'players' && net.user) html = playersHTML();
+    else if (overlay === 'profile' && net.user) html = profileHTML();
+    else if (overlay === 'account' && net.user) html = accountHTML();
+    else if (overlay === 'avatar' && net.user) html = avatarPageHTML();
+    else if (overlay === 'privacy') html = privacyHTML();
+    else if (overlay === 'tutintro') html = tutIntroHTML();
     const full = `<div class="sheet" role="dialog" aria-modal="true">${html}</div>`;
     if (el.dataset.html === full) return;
     const keep = {};
-    el.querySelectorAll('input').forEach((i) => { if (i.id) keep[i.id] = i.value; });
+    el.querySelectorAll('input').forEach((i) => { if (i.id && i.type !== 'file') keep[i.id] = i.value; });
     const active = document.activeElement && el.contains(document.activeElement) ? document.activeElement.id : null;
     const caret = active && document.activeElement.selectionStart;
     const sheet = el.querySelector('.sheet');
@@ -690,7 +937,7 @@
     el.classList.toggle('show', !!html);
     el.innerHTML = html ? full : '';
     if (!sameKind) return;
-    el.querySelectorAll('input').forEach((i) => { if (i.id && keep[i.id] != null && i.type !== 'hidden') i.value = keep[i.id]; });
+    el.querySelectorAll('input').forEach((i) => { if (i.id && keep[i.id] != null && i.type !== 'hidden' && i.type !== 'file') i.value = keep[i.id]; });
     const ns = el.querySelector('.sheet');
     if (ns) ns.scrollTop = scroll;
     if (active) {
@@ -714,10 +961,35 @@
     $('#hhead').innerHTML = handHeadHTML();
     $('#hand').innerHTML = handHTML();
     $('#actions').innerHTML = actionsHTML();
+    renderCoach();
     renderOverlay();
     renderChrome();
     soundEvents();
+    tickTimers();
   }
+
+  // ---------- odpočet tahu (online) ----------
+  const nowSrv = () => Date.now() + (net.skew || 0);
+  const mmss = (ms) => { const x = Math.max(0, Math.ceil(ms / 1000)); return Math.floor(x / 60) + ':' + String(x % 60).padStart(2, '0'); };
+  let buzzed = {};
+  function tickTimers() {
+    const v = net.view;
+    document.querySelectorAll('[data-deadline]').forEach((el) => {
+      const d = Number(el.dataset.deadline);
+      const left = d - nowSrv();
+      const show = Number(el.dataset.show || 0);
+      el.textContent = !show || left <= show ? (el.dataset.prefix ? t(el.dataset.prefix, { t: mmss(left) }) : mmss(left)) : '';
+      el.classList.toggle('urgent', left <= 10000);
+    });
+    if (v && v.turnDeadline && myTurn() && !(v.seats[ME] && v.seats[ME].botControl)) {
+      const left = v.turnDeadline - nowSrv();
+      for (const mark of [30000, 10000]) {
+        const key = v.turnDeadline + ':' + mark;
+        if (left <= mark && left > 0 && !buzzed[key]) { buzzed[key] = true; S.vibrate(mark === 10000 ? [80, 60, 80] : 120); S.sfx('tick'); }
+      }
+    }
+  }
+  setInterval(() => { if (online() && net.view && (net.view.turnDeadline || net.view.readyDeadline)) tickTimers(); }, 1000);
 
   // Zvuky podle toho, co se ve hře změnilo od minulého vykreslení.
   let lastSig = null;
@@ -786,14 +1058,17 @@
     const html = EMOTES.map((x) => `<button class="emo ${x.throw ? 'throw' : ''}" data-act="emote" data-v="${x.id}" title="${esc(t('emo_' + x.id))}" aria-label="${esc(t('emo_' + x.id))}">${x.e}</button>`).join('');
     if (bar.dataset.html !== html) { bar.dataset.html = html; bar.innerHTML = html; }
   }
+  const isMuted = (m) => m && m.uid && net.mutes.includes(m.uid);
   function chatLine(m) {
     if (m.kind === 'sys') return `<li class="sys">${esc(t('sys_' + m.k, m.p))}</li>`;
+    if (isMuted(m)) return '';
     const mine = net.user && net.view && m.seat === net.view.me.seat && m.seat >= 0;
+    const who = m.uid && net.user && m.uid !== net.user.id ? `<button class="cname" data-act="profile" data-v="${m.uid}">${esc(m.name)}</button>` : `<b>${esc(m.name)}</b>`;
     if (m.kind === 'emote') {
       const x = EMOTES.find((e) => e.id === m.id);
-      return `<li class="${mine ? 'mine' : ''}"><b>${esc(m.name)}</b> <span class="big">${x ? x.e : ''}</span> ${esc(t('emo_' + m.id))}</li>`;
+      return `<li class="${mine ? 'mine' : ''}">${who} <span class="big">${x ? x.e : ''}</span> ${esc(t('emo_' + m.id))}</li>`;
     }
-    return `<li class="${mine ? 'mine' : ''}"><b>${esc(m.name)}</b> ${esc(m.text)}</li>`;
+    return `<li class="${mine ? 'mine' : ''}">${who} ${esc(m.text)}</li>`;
   }
   function renderChatList() {
     const list = $('#chatList');
@@ -804,6 +1079,7 @@
   function onChat(m, fresh) {
     net.chat.push(m);
     if (net.chat.length > 150) net.chat.shift();
+    if (isMuted(m)) { if (net.chatOpen) renderChatList(); return; }
     if (net.chatOpen) renderChatList();
     else if (fresh && m.kind !== 'sys') net.unread++;
     if (fresh && m.kind === 'emote') playEmote(m);
@@ -907,9 +1183,46 @@
       if (me.user) { net.user = me.user; connectLobby(); }
     }
   }
+  function applyMe(me) {
+    if (!me || !me.user) return;
+    net.user = me.user;
+    net.mutes = me.mutes || [];
+    net.muted = me.muted || [];
+    net.requests = me.requests || 0;
+  }
   async function refreshMe() {
-    const me = await apiCall('/api/me');
-    if (me.user) net.user = me.user;
+    applyMe(await apiCall('/api/me'));
+  }
+  async function refreshFriends() {
+    const r = await apiCall('/api/friends');
+    if (r.friends) {
+      net.friends = r;
+      net.requests = r.incoming.length;
+      for (const p of r.friends) if (p.status !== 'offline') net.onlineMap[p.id] = net.onlineMap[p.id] || { status: p.status };
+    }
+    render();
+  }
+  async function openProfile(id) {
+    id = Number(id);
+    if (!net.user || !id) return;
+    if (overlay !== 'profile') openPage('profile');
+    net.profileId = id;
+    if (!net.profile || net.profile.user.id !== id) net.profile = null;
+    render();
+    const r = await apiCall('/api/profile?id=' + id);
+    if (r.user && net.profileId === id) { net.profile = r; render(); } else if (r.error) { toast(tr(r.error)); }
+  }
+  async function friendAction(kind, id) {
+    const path = { freq: '/api/friends/request', facc: '/api/friends/answer', fdec: '/api/friends/answer', fdel: '/api/friends/remove' }[kind];
+    const body = { id: Number(id) };
+    if (kind === 'facc') body.accept = true;
+    if (kind === 'fdec') body.accept = false;
+    const r = await apiCall(path, body);
+    if (r.error) { toast(tr(r.error)); return; }
+    if (kind === 'freq') toast(t(r.status === 'friends' ? 'now_friends' : 'request_sent_toast'), 'info');
+    if (kind === 'facc') toast(t('now_friends'), 'info');
+    await refreshFriends();
+    if (overlay === 'profile' && net.profileId === Number(id)) openProfile(id);
   }
   async function refreshPlayers() {
     const r = await apiCall('/api/players?q=' + encodeURIComponent(net.search));
@@ -936,6 +1249,15 @@
       let m;
       try { m = JSON.parse(ev.data); } catch (e) { return; }
       if (m.t === 'presence') { net.onlineMap = m.online || {}; render(); }
+      else if (m.t === 'friend_req') {
+        net.requests++;
+        toast(t('friend_req_toast', { name: m.from.name }), 'info');
+        S.sfx('pop');
+        if (overlay === 'friends') refreshFriends(); else render();
+      } else if (m.t === 'friend_ok') {
+        toast(t('friend_ok_toast', { name: m.by.name }), 'info');
+        refreshFriends();
+      }
       else if (m.t === 'invite') {
         if (!net.invites.some((i) => i.id === m.inv.id) && !(net.code === m.inv.table)) net.invites.push(m.inv);
         render();
@@ -975,12 +1297,14 @@
     net.joinErr = '';
     net.invites = net.invites.filter((i) => i.table !== code);
     sel.clear();
+    nav = [];
     overlay = 'room';
     try { history.replaceState(null, '', '/?t=' + code); } catch (e) { /* sandbox */ }
     openTableSocket();
     sendLobbyStatus();
     render();
     refreshPlayers();
+    refreshFriends();
   }
   function openTableSocket() {
     if (!net.code || !net.wantTable) return;
@@ -1018,6 +1342,7 @@
     };
   }
   function onTableState(s) {
+    if (s.now) net.skew = s.now - Date.now();
     const prevPhase = net.view && net.view.game ? net.view.game.phase : null;
     const prevStatus = net.view ? net.view.status : null;
     net.view = s;
@@ -1053,7 +1378,8 @@
     sendLobbyStatus();
     if (stash) { st = stash.st; mode = stash.mode; stash = null; ME = 0; }
     if (!silent) {
-      overlay = net.user ? 'online' : 'start';
+      nav = [];
+      overlay = 'start';
       refreshMe().then(() => { refreshPlayers(); });
       render();
     }
@@ -1072,7 +1398,7 @@
     if (!st || overlay || online()) return;
     const pi = st.current;
     if (!st.players[pi].isBot) return;
-    const r = B.step(st, pi, prefs.level);
+    const r = B.step(st, pi, tut.on ? 'easy' : prefs.level);
     if (!r.ok) {
       botFails++;
       if (botFails > 3) emergencyMove(pi);
@@ -1148,7 +1474,10 @@
     setToken(r.token);
     net.user = r.user;
     net.authErr = '';
+    net.forgot = false;
     connectLobby();
+    refreshMe().then(() => render());
+    syncPush();
     if (net.joinAfterLogin) {
       const c = net.joinAfterLogin;
       net.joinAfterLogin = null;
@@ -1159,9 +1488,14 @@
   }
   function goOnline() {
     if (!net.user) { overlay = 'auth'; render(); return; }
-    overlay = 'online';
+    nav = [];
+    overlay = 'start';
     render();
-    refreshMe().then(() => { refreshPlayers(); refreshLeaders(); });
+    refreshMe().then(() => { render(); refreshFriends(); });
+  }
+  function openPage(name) {
+    if (overlay && overlay !== name) nav.push(overlay);
+    overlay = name;
   }
   async function createTable(m) {
     const r = await apiCall('/api/table/create', { mode: m });
@@ -1196,10 +1530,64 @@
     let r = null;
     const v = el && el.dataset ? el.dataset.v : null;
     switch (name) {
-      case 'menu': prevOverlay = null; overlay = 'menu'; break;
+      case 'menu': nav = []; overlay = 'menu'; break;
       case 'leaveask': overlay = 'leaveask'; break;
-      case 'rules': prevOverlay = overlay; overlay = 'rules'; break;
-      case 'app': prevOverlay = overlay; overlay = 'app'; break;
+      case 'rules': openPage('rules'); break;
+      case 'app': openPage('app'); break;
+      case 'privacy': openPage('privacy'); break;
+      case 'friends': if (!net.user) { goOnline(); return; } openPage('friends'); refreshFriends(); break;
+      case 'players':
+        if (!net.user) { goOnline(); return; }
+        openPage('players');
+        if (net.ptab === 'leaders') refreshLeaders(); else refreshPlayers();
+        break;
+      case 'ptab':
+        net.ptab = v === 'leaders' ? 'leaders' : 'search';
+        if (net.ptab === 'leaders') refreshLeaders(); else refreshPlayers();
+        break;
+      case 'profile':
+        net.chatOpen = false; // profil se jinak otevře pod chatem
+        if (net.user) openProfile(v); else goOnline();
+        return;
+      case 'account': net.formMsg = {}; openPage('account'); refreshMe().then(render); break;
+      case 'avatar': net.formMsg = {}; openPage('avatar'); break;
+      case 'avpick': saveAvatar({ preset: v || '' }); return;
+      case 'freq': case 'facc': case 'fdec': friendAction(name, v); return;
+      case 'fdel':
+        if (el.dataset.confirm && !window.confirm(t('remove_friend_q'))) return;
+        friendAction('fdel', v);
+        return;
+      case 'mute':
+        apiCall('/api/mute', { id: Number(v), on: el.dataset.on === '1' }).then(async (r) => {
+          if (r.error) { toast(tr(r.error)); return; }
+          toast(t(r.muted ? 'muted_toast' : 'unmuted_toast'), 'info');
+          await refreshMe();
+          if (overlay === 'profile') openProfile(net.profileId); else render();
+          renderChatList();
+        });
+        return;
+      case 'admavatar':
+        apiCall('/api/admin/avatar', { id: Number(v) }).then(() => openProfile(v));
+        return;
+      case 'forgot': net.forgot = true; break;
+      case 'imback': sendTable({ t: 'back' }); return;
+      case 'pushon': enablePush(); return;
+      case 'pushtoggle': if (v === '1') enablePush(); else disablePush(); return;
+      case 'tutorial': tut.slide = 0; openPage('tutintro'); break;
+      case 'tutnext': tut.slide++; break;
+      case 'tutprev': tut.slide = Math.max(0, tut.slide - 1); break;
+      case 'tutstart':
+        newMatch('1v1');
+        tut = { on: true, hidden: false, slide: 0 };
+        localStarted = true;
+        nav = [];
+        overlay = null;
+        break;
+      case 'tuthint': tut.hidden = !tut.hidden; if (overlay === 'menu') overlay = null; break;
+      case 'coachshow':
+        sel.clear();
+        String(v || '').split(',').map(Number).filter((x) => myHand().some((c) => c.id === x)).forEach((x) => sel.add(x));
+        break;
       case 'appinstall':
         if (installEvt) {
           const ev = installEvt;
@@ -1210,19 +1598,20 @@
           } catch (e) { /* výzva už použitá */ }
         }
         break;
-      case 'settings': prevOverlay = overlay; overlay = 'settings'; break;
-      case 'back': overlay = prevOverlay; prevOverlay = null; break;
+      case 'settings': openPage('settings'); break;
+      case 'back': overlay = nav.length ? nav.pop() : null; if (overlay === 'profile' && net.profileId) openProfile(net.profileId); break;
       case 'showpile': overlay = 'pile'; break;
       case 'log': overlay = 'log'; break;
       case 'close':
+        nav = [];
         overlay = online() && net.view && net.view.status === 'waiting' ? 'room' : null;
         break;
       case 'openround': overlay = 'round'; break;
       case 'openroom': overlay = 'room'; break;
       case 'clearsel': sel.clear(); break;
-      case 'tostart': overlay = 'start'; break;
+      case 'tostart': nav = []; overlay = 'start'; if (net.user) refreshMe().then(render); break;
       case 'lang':
-        if (LANGS.includes(v)) { prefs.lang = v; savePrefs(); }
+        if (LANGS.includes(v)) { prefs.lang = v; savePrefs(); syncPush(); }
         break;
       case 'pref': {
         const k = el.dataset.k;
@@ -1240,8 +1629,8 @@
       case 'level':
         if (LEVELS.includes(v)) { prefs.level = v; savePrefs(); }
         break;
-      case 'new1': newMatch('1v1'); overlay = null; break;
-      case 'new2': newMatch('2v2'); overlay = null; break;
+      case 'new1': newMatch('1v1'); tut.on = false; localStarted = true; nav = []; overlay = null; break;
+      case 'new2': newMatch('2v2'); tut.on = false; localStarted = true; nav = []; overlay = null; break;
       case 'goonline': goOnline(); return;
       case 'authtab': net.authTab = v === 'register' ? 'register' : 'login'; net.authErr = ''; break;
       case 'logout':
@@ -1249,11 +1638,9 @@
         setToken(null);
         net.user = null;
         if (net.lobby) { try { net.lobby.close(); } catch (e) { /* nic */ } }
+        net.mutes = []; net.muted = []; net.requests = 0; net.friends = { friends: [], incoming: [], outgoing: [] }; net.profile = null;
+        nav = [];
         overlay = 'start';
-        break;
-      case 'otab':
-        net.tab = v === 'leaders' ? 'leaders' : 'players';
-        if (net.tab === 'leaders') refreshLeaders(); else refreshPlayers();
         break;
       case 'create': createTable(v === '2v2' ? '2v2' : '1v1'); return;
       case 'jointable': joinTable(v); return;
@@ -1367,7 +1754,11 @@
       render();
       return;
     }
-    if (ev.target.id === 'overlay' && overlay && !['start', 'round', 'room', 'auth', 'online'].includes(overlay)) {
+    if (ev.target.id === 'overlay' && PAGES.includes(overlay)) {
+      act('back');
+      return;
+    }
+    if (ev.target.id === 'overlay' && overlay && !['start', 'round', 'room', 'auth', 'online', 'leaveask'].includes(overlay)) {
       overlay = online() && net.view && net.view.status === 'waiting' ? 'room' : null;
       pending = null;
       render();
@@ -1384,6 +1775,25 @@
       const i = f.querySelector('#chatInput');
       const text = i.value.trim();
       if (text) { sendTable({ t: 'chat', text }); i.value = ''; }
+    } else if (f.id === 'nameForm') {
+      apiCall('/api/profile/name', { name: f.querySelector('#newName').value }).then((r) => {
+        net.formMsg.name = r.error ? { text: tr(r.error) } : { ok: true, text: t('saved') };
+        if (r.user) { net.user = r.user; if (net.lobby) { try { net.lobby.close(); } catch (e) { /* znovu se připojí */ } } }
+        render();
+      });
+    } else if (f.id === 'passForm') {
+      apiCall('/api/profile/password', { old: f.querySelector('#oldPass').value, password: f.querySelector('#newPass').value }).then((r) => {
+        net.formMsg.pass = r.error ? { text: tr(r.error) } : { ok: true, text: t('password_changed') };
+        if (!r.error) { f.querySelector('#oldPass').value = ''; f.querySelector('#newPass').value = ''; }
+        render();
+      });
+    } else if (f.id === 'delForm') {
+      if (!window.confirm(t('delete_q'))) return;
+      apiCall('/api/profile/delete', { password: f.querySelector('#delPass').value }).then((r) => {
+        if (r.error) { net.formMsg.del = { text: tr(r.error) }; render(); return; }
+        toast(t('account_deleted'), 'info');
+        act('logout');
+      });
     } else if (f.id === 'adminForm') {
       apiCall('/api/admin/reset', { name: f.querySelector('#admName').value, password: f.querySelector('#admPass').value }).then((r) => {
         net.adminMsg = r.error ? tr(r.error) : t('admin_done', { name: r.name });
@@ -1391,6 +1801,97 @@
       });
     }
   });
+
+  document.addEventListener('change', (ev) => {
+    if (ev.target.id === 'avatarFile' && ev.target.files && ev.target.files[0]) uploadAvatar(ev.target.files[0]);
+  });
+  async function saveAvatar(body) {
+    const r = await apiCall('/api/profile/avatar', body);
+    net.formMsg.avatar = r.error ? { text: tr(r.error) } : { ok: true, text: t('saved') };
+    if (r.user) net.user = r.user;
+    render();
+  }
+  // zmenší fotku na čtverec 192 × 192 a pošle ji jako malý obrázek WebP (nebo JPEG)
+  async function uploadAvatar(file) {
+    net.formMsg.avatar = { ok: true, text: t('uploading') };
+    render();
+    try {
+      const url = URL.createObjectURL(file);
+      const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = url; });
+      const side = Math.min(img.naturalWidth, img.naturalHeight);
+      const c = document.createElement('canvas');
+      c.width = 192; c.height = 192;
+      c.getContext('2d').drawImage(img, (img.naturalWidth - side) / 2, (img.naturalHeight - side) / 2, side, side, 0, 0, 192, 192);
+      URL.revokeObjectURL(url);
+      let data = '';
+      for (const q of [0.82, 0.7, 0.55, 0.4]) {
+        data = c.toDataURL('image/webp', q);
+        if (!data.startsWith('data:image/webp')) data = c.toDataURL('image/jpeg', q);
+        if (data.length < 68000) break;
+      }
+      await saveAvatar({ image: data });
+    } catch (e) {
+      net.formMsg.avatar = { text: t('bad_image') };
+      render();
+    }
+  }
+
+  // ---------- upozornění (Web Push) ----------
+  function pushSupported() {
+    return !!(net.user && net.available && 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window);
+  }
+  function pushSettingsHTML() {
+    if (!pushSupported()) return '';
+    const denied = Notification.permission === 'denied';
+    const on = prefs.push && Notification.permission === 'granted';
+    return `<h3>${esc(t('push_title'))}</h3>
+      <div class="seg" role="group">
+        <button class="segbtn ${on ? 'on' : ''}" data-act="pushtoggle" data-v="1" ${denied ? 'disabled' : ''}>${esc(t('on'))}</button>
+        <button class="segbtn ${!on ? 'on' : ''}" data-act="pushtoggle" data-v="0">${esc(t('off'))}</button></div>
+      <p class="seghint">${esc(t(denied ? 'push_denied' : 'push_hint'))}</p>`;
+  }
+  function keyBytes(b64) {
+    const s2 = b64.replace(/-/g, '+').replace(/_/g, '/');
+    const bin = atob(s2 + '==='.slice((s2.length + 3) % 4));
+    return Uint8Array.from(bin, (ch) => ch.charCodeAt(0));
+  }
+  async function enablePush() {
+    try {
+      const perm = await Notification.requestPermission();
+      if (perm !== 'granted') { toast(t('push_denied')); render(); return; }
+      const reg = await navigator.serviceWorker.ready;
+      const { key } = await (await fetch('/api/push/key')).json();
+      let sub = await reg.pushManager.getSubscription();
+      if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(key) });
+      const r = await apiCall('/api/push/subscribe', { sub: sub.toJSON(), lang: prefs.lang });
+      if (r.error) throw new Error('subscribe');
+      prefs.push = true;
+      savePrefs();
+      toast(t('push_on_toast'), 'info');
+    } catch (e) {
+      toast(t('push_failed'));
+    }
+    render();
+  }
+  async function disablePush() {
+    prefs.push = false;
+    savePrefs();
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      const sub = await reg.pushManager.getSubscription();
+      if (sub) { await apiCall('/api/push/unsubscribe', { endpoint: sub.endpoint }); await sub.unsubscribe(); }
+    } catch (e) { /* nic */ }
+    render();
+  }
+  // po přihlášení (nebo změně jazyka) přiřadí předplatné aktuálnímu účtu
+  async function syncPush() {
+    if (!pushSupported() || !prefs.push || Notification.permission !== 'granted') return;
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      const sub = await reg.pushManager.getSubscription();
+      if (sub) await apiCall('/api/push/subscribe', { sub: sub.toJSON(), lang: prefs.lang });
+    } catch (e) { /* nic */ }
+  }
 
   let searchTimer = null;
   let volTimer = null;
@@ -1422,25 +1923,46 @@
     if (saved && saved.st && saved.st.players && saved.st.phase && saved.st.phase !== 'new') {
       st = saved.st;
       mode = saved.mode || '1v1';
+      localStarted = true;
+      if (saved.tut && saved.tut.on) tut = { on: true, hidden: !!saved.tut.hidden, slide: 0 };
       overlay = st.phase === 'roundOver' || st.phase === 'gameOver' ? 'round' : null;
     } else {
       newMatch('1v1');
       overlay = 'start';
     }
     if (window.claude && window.claude.hot && window.claude.hot.snapshot) {
-      window.claude.hot.snapshot(() => ({ st: online() ? (stash ? stash.st : null) : st, mode, prefs }));
+      window.claude.hot.snapshot(() => ({ st: online() ? (stash ? stash.st : null) : st, mode, prefs, tut: tut.on ? { on: true } : null }));
     }
     render();
     schedule();
     setupApp();
-    const code = new URLSearchParams(location.search).get('t');
-    checkOnline().then(() => {
+    const qs = new URLSearchParams(location.search);
+    const code = qs.get('t');
+    const view = qs.get('view');
+    checkOnline().then(async () => {
+      if (net.user) { await refreshMe(); refreshFriends(); syncPush(); }
       if (net.available && code) {
         if (net.user) joinTable(code);
         else { net.joinAfterLogin = code.toUpperCase(); overlay = 'auth'; }
+      } else if (view === 'friends' && net.user) {
+        nav = ['start'];
+        overlay = 'friends';
+        try { history.replaceState(null, '', '/'); } catch (e) { /* sandbox */ }
       }
       render();
     });
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.addEventListener('message', (ev) => {
+        const d = ev.data || {};
+        if (d.t !== 'open' || !d.url) return;
+        try {
+          const u = new URL(d.url);
+          const c = u.searchParams.get('t');
+          if (c) joinTable(c);
+          else if (u.searchParams.get('view') === 'friends' && net.user) { nav = []; openPage('friends'); refreshFriends(); render(); }
+        } catch (e) { /* nic */ }
+      });
+    }
   }
 
   function setupApp() {

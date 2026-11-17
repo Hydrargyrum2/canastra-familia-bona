@@ -12,6 +12,16 @@ První zaregistrovaný účet je správce (může resetovat zapomenutá hesla).
 - Vypadne-li hráči spojení, po minutě za něj hraje robot a výsledek se mu počítá normálně.
 - Odejde-li hráč od rozehrané hry sám, počítá se mu prohra hned při odchodu. Zbylí hráči dohrají s robotem a výsledek dostanou na konci.
 
+## Co hra umí
+
+- Hra proti robotům (lehký, střední, těžký) a výuka pro začátečníky s nápovědou.
+- Online hra 1 na 1 a 2 na 2: stoly s kódem, pozvánky, chat a emoty.
+- Účty: profil s obrázkem, statistiky proti lidem a s roboty, historie her, vzájemné zápasy.
+- Přátelé (žádosti s potvrzením), hledání hráčů, žebříček, ztlumení hráče.
+- Upozornění na pozvánky a žádosti o přátelství i se zavřenou aplikací (Web Push).
+- Limit 2 minuty na tah, pak táhne střední robot.
+- Hudba v pozadí, zvuky, vibrace; instalace jako aplikace (Android, Windows, iPhone).
+
 ## Struktura
 
 | Cesta | Co tam je |
@@ -21,8 +31,11 @@ První zaregistrovaný účet je správce (může resetovat zapomenutá hesla).
 | `src/client/engine.js` | Pravidla hry (balíček, vykládky, hromádka, body) |
 | `src/client/bot.js` | Robot (lehký, střední, těžký) |
 | `src/client/i18n.js` | Překlady (cs, en, pt) |
+| `src/client/sound.js` | Hudba a zvuky |
 | `src/client/app.js`, `style.css`, `shell.html` | Rozhraní |
-| `src/server/index.js` | Server: účty, lobby (online stav, pozvánky), stoly (hra, roboti, chat) – Cloudflare Worker + Durable Objects |
+| `src/server/index.js` | Server: účty, přátelé, profily, lobby (online stav, pozvánky), stoly (hra, roboti, chat) – Cloudflare Worker + Durable Objects |
+| `src/server/webpush.js` | Šifrování a podpis upozornění (Web Push) |
+| `public/music/` | Hudba (monume, AtlasAudio, Aurec – Pixabay) |
 | `wrangler.jsonc` | Nastavení pro Cloudflare |
 | `tools/build.py` | Sestaví `public/index.html` ze zdrojů |
 | `tools/sim.js` | Simulace robot proti robotovi s kontrolou pravidel |
@@ -30,6 +43,7 @@ První zaregistrovaný účet je správce (může resetovat zapomenutá hesla).
 | `tools/servertest*.mjs` | Testy serveru (spustit proti `npx wrangler dev`) |
 | `tools/e2e.py` | Test ve dvou prohlížečích (Playwright) |
 | `tools/pwatest.py` | Test instalovatelné aplikace a offline režimu |
+| `tools/uitest.py` | Test menu, přátel, profilu, výuky a odpočtu ve třech prohlížečích |
 | `tools/icons.py` | Vyrobí ikony aplikace |
 
 ## Úpravy

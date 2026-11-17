@@ -286,6 +286,7 @@ export class Accounts extends DurableObject {
     return {
       user: this.pub(u),
       mutes: this.sql.exec('SELECT muted_id FROM mutes WHERE user_id = ?', u.id).toArray().map((r) => r.muted_id),
+      muted: this.sql.exec('SELECT u.id, u.name FROM mutes m JOIN users u ON u.id = m.muted_id WHERE m.user_id = ?', u.id).toArray().map((r) => ({ id: r.id, name: r.name })),
       requests: this.row("SELECT COUNT(*) AS n FROM friends WHERE b = ? AND status = 'pending'", u.id).n,
     };
   }

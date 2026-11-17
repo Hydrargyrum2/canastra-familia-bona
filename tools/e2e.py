@@ -21,7 +21,7 @@ async def register(pg, name):
     await pg.fill('#authName', name)
     await pg.fill('#authPass', 'heslo123')
     await pg.click('#authForm button[type=submit]')
-    await pg.wait_for_selector('.ohead', timeout=8000)
+    await pg.wait_for_selector('.mecard', timeout=8000)
 
 async def view(pg):
     return await pg.evaluate("""(()=>{ const s = document.querySelector('#score .rd'); return s ? s.textContent : '' })()""")
@@ -98,7 +98,7 @@ async def main():
         await B.screenshot(path=SH + 'b-forfeit.png')
         await A.wait_for_function("document.querySelector('#oppSeat') && document.querySelector('#oppSeat').textContent.includes('robot')", timeout=6000)
         print('po odchodu hraje za Bonu robot:', (await A.inner_text('#oppSeat')).replace('\n', ' '))
-        await B.wait_for_selector('.ohead', timeout=5000)
+        await B.wait_for_selector('.mecard', timeout=5000)
         print('Bona je zpět v lobby')
         print('chyby:', errs)
         await b.close()
