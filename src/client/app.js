@@ -39,7 +39,9 @@
   let botTimer = null;
   let toastTimer = null;
   let botFails = 0;
-  let prefs = { lang: detectLang(), level: 'hard' };
+  let prefs = { lang: detectLang(), level: 'hard', music: true, musicVol: 35, sfx: true, sfxVol: 70, vibrate: true, track: 0, push: false };
+  const S = window.Sound || { configure() {}, sfx() {}, vibrate() {}, next() {}, TRACKS: [], track: 0, canVibrate: false };
+  const soundPrefs = () => ({ music: prefs.music, musicVol: prefs.musicVol, sfx: prefs.sfx, sfxVol: prefs.sfxVol, vibrate: prefs.vibrate, track: prefs.track });
   let pending = null; // vykládka čekající na volbu, kam dát žolíka
   let stash = null; // rozehraná hra proti robotům, když jsem u online stolu
 
@@ -92,6 +94,11 @@
       const p = JSON.parse(localStorage.getItem(PREF_KEY) || 'null');
       if (p && LANGS.includes(p.lang)) prefs.lang = p.lang;
       if (p && LEVELS.includes(p.level)) prefs.level = p.level;
+      if (p) {
+        for (const k of ['music', 'sfx', 'vibrate', 'push']) if (typeof p[k] === 'boolean') prefs[k] = p[k];
+        for (const k of ['musicVol', 'sfxVol']) if (typeof p[k] === 'number' && p[k] >= 0 && p[k] <= 100) prefs[k] = p[k];
+        if (typeof p.track === 'number') prefs.track = p.track;
+      }
     } catch (e) { /* bez úložiště */ }
   }
   function savePrefs() {
@@ -341,10 +348,32 @@
       `<button class="segbtn ${prefs.level === l ? 'on' : ''}" data-act="level" data-v="${l}" aria-pressed="${prefs.level === l}">${esc(t('level_' + l))}</button>`).join('')}</div>
       <p class="seghint">${esc(t('level_' + prefs.level + '_hint'))}</p>`;
   }
+  function onOff(key) {
+    return `<div class="seg" role="group">
+      <button class="segbtn ${prefs[key] ? 'on' : ''}" data-act="pref" data-k="${key}" data-v="1" aria-pressed="${!!prefs[key]}">${esc(t('on'))}</button>
+      <button class="segbtn ${!prefs[key] ? 'on' : ''}" data-act="pref" data-k="${key}" data-v="0" aria-pressed="${!prefs[key]}">${esc(t('off'))}</button></div>`;
+  }
+  function slider(key) {
+    return `<label class="vol"><span>🔈</span><input type="range" id="vol_${key}" min="0" max="100" step="5" value="${prefs[key]}" aria-label="${esc(t('volume'))}"><span>🔊</span></label>`;
+  }
+  function soundSettingsHTML() {
+    const tr0 = S.TRACKS[S.track] || S.TRACKS[0];
+    return `<h3>${esc(t('settings_music'))}</h3>
+      ${onOff('music')}
+      ${prefs.music ? `${slider('musicVol')}
+        <div class="trackrow"><span class="seghint">${esc(t('now_track', { name: tr0 ? tr0.name : '' }))}</span><button class="mini ghost" data-act="nexttrack">${esc(t('next_track'))} ⏭</button></div>` : ''}
+      <h3>${esc(t('settings_sfx'))}</h3>
+      ${onOff('sfx')}
+      ${prefs.sfx ? slider('sfxVol') : ''}
+      ${S.canVibrate ? `<h3>${esc(t('settings_vibrate'))}</h3>${onOff('vibrate')}` : ''}`;
+  }
+  function pushSettingsHTML() { return ''; }
   function settingsHTML() {
     return `<h2>${esc(t('settings'))}</h2>
       <h3>${esc(t('settings_lang'))}</h3>
       ${langButtons()}
+      ${soundSettingsHTML()}
+      ${pushSettingsHTML()}
       <h3>${esc(t('settings_level'))}</h3>
       ${levelButtons()}
       <div class="stackbtns"><button class="btn primary" data-act="back">${esc(t('done'))}</button></div>`;
@@ -687,6 +716,33 @@
     $('#actions').innerHTML = actionsHTML();
     renderOverlay();
     renderChrome();
+    soundEvents();
+  }
+
+  // Zvuky podle toho, co se ve hře změnilo od minulého vykreslení.
+  let lastSig = null;
+  function soundEvents() {
+    const melds = st.teams.reduce((n, tm) => n + tm.melds.length, 0);
+    const cans = st.teams.reduce((n, tm) => n + tm.melds.filter((m) => E.isCanasta(m)).length, 0);
+    const last = st.log.length ? st.log[st.log.length - 1] : null;
+    const sig = { log: JSON.stringify(last) + '#' + st.log.length, melds, cans, phase: st.phase, mine: !!myTurn(), round: st.round, key: (online() ? 'o' : 'l') + mode };
+    const prev = lastSig;
+    lastSig = sig;
+    if (!prev || prev.key !== sig.key || sig.phase === 'waiting') return;
+    if (sig.phase !== prev.phase && (sig.phase === 'roundOver' || sig.phase === 'gameOver')) {
+      if (sig.phase === 'gameOver') S.sfx(st.winner === US() ? 'win' : 'lose'); else S.sfx('round');
+      return;
+    }
+    if (sig.cans > prev.cans && sig.round === prev.round) S.sfx('canasta');
+    else if (sig.melds > prev.melds && sig.round === prev.round) S.sfx('meld');
+    else if (sig.log !== prev.log && last) {
+      if (last.k === 'log_discard') S.sfx('card');
+      else if (last.k === 'log_draw' || last.k === 'log_draw_red' || last.k === 'log_take_pile') S.sfx('draw');
+    }
+    if (online() && sig.mine && !prev.mine) {
+      setTimeout(() => S.sfx('turn'), 180);
+      S.vibrate(70);
+    }
   }
 
   function toast(msg, kind) {
@@ -1168,6 +1224,19 @@
       case 'lang':
         if (LANGS.includes(v)) { prefs.lang = v; savePrefs(); }
         break;
+      case 'pref': {
+        const k = el.dataset.k;
+        if (['music', 'sfx', 'vibrate'].includes(k)) {
+          prefs[k] = v === '1';
+          savePrefs();
+          S.unlock && S.unlock();
+          S.configure(soundPrefs());
+          if (k === 'sfx' && prefs.sfx) S.sfx('pop');
+          if (k === 'vibrate' && prefs.vibrate) S.vibrate(80);
+        }
+        break;
+      }
+      case 'nexttrack': S.next(); prefs.track = S.track; savePrefs(); break;
       case 'level':
         if (LEVELS.includes(v)) { prefs.level = v; savePrefs(); }
         break;
@@ -1324,7 +1393,16 @@
   });
 
   let searchTimer = null;
+  let volTimer = null;
   document.addEventListener('input', (ev) => {
+    if (ev.target.id === 'vol_musicVol' || ev.target.id === 'vol_sfxVol') {
+      const k = ev.target.id.slice(4);
+      prefs[k] = Math.max(0, Math.min(100, Number(ev.target.value) || 0));
+      S.configure(soundPrefs());
+      clearTimeout(volTimer);
+      volTimer = setTimeout(() => { savePrefs(); if (k === 'sfxVol') S.sfx('pop'); }, 250);
+      return;
+    }
     if (ev.target.id === 'playerSearch') {
       net.search = ev.target.value;
       clearTimeout(searchTimer);
@@ -1337,6 +1415,8 @@
   // ---------- start ----------
   function start(data) {
     loadPrefs();
+    S.configure(soundPrefs());
+    S.onChange = () => { prefs.track = S.track; savePrefs(); render(); };
     if (data && data.prefs && LANGS.includes(data.prefs.lang)) prefs = Object.assign(prefs, data.prefs);
     const saved = data && data.st ? data : load();
     if (saved && saved.st && saved.st.players && saved.st.phase && saved.st.phase !== 'new') {
