@@ -22,6 +22,19 @@
   let mode = '1v1';
   let overlay = null; // start | menu | rules | settings | pile | log | round | wild | auth | online | room
   let prevOverlay = null;
+  // instalace aplikace (PWA)
+  let installEvt = null; // uložená výzva prohlížeče k instalaci
+  let appInstalled = false;
+  const isStandalone = () => {
+    try { return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true; } catch (e) { return false; }
+  };
+  const platform = () => {
+    const ua = navigator.userAgent || '';
+    if (/android/i.test(ua)) return 'android';
+    if (/iphone|ipad|ipod/i.test(ua) || (/macintosh/i.test(ua) && navigator.maxTouchPoints > 1)) return 'iphone';
+    if (/windows/i.test(ua)) return 'windows';
+    return 'other';
+  };
   const sel = new Set();
   let botTimer = null;
   let toastTimer = null;
@@ -421,7 +434,26 @@
         <button class="btn primary" data-act="new1">${esc(t('start_1v1'))}</button>
         <button class="btn" data-act="new2">${esc(t('start_2v2'))}</button>
         <button class="linkbtn" data-act="rules">${esc(t('read_rules'))}</button>
+        ${isStandalone() ? '' : `<button class="${installEvt ? 'btn appbtn' : 'linkbtn'}" data-act="app">${esc(t(installEvt ? 'app_install' : 'app_btn'))}</button>`}
       </div>`;
+  }
+
+  function appHTML() {
+    const pf = platform();
+    const onSite = net.available;
+    let top;
+    if (isStandalone()) top = `<p class="okline">✓ ${esc(t('app_running'))}</p>`;
+    else if (appInstalled) top = `<p class="okline">✓ ${esc(t('app_installed'))}</p>`;
+    else if (!onSite) top = `<p class="seghint">${esc(t('app_here_only'))} <a href="${SITE_URL}" target="_blank" rel="noopener">${SITE_URL.replace('https://', '')}</a></p>`;
+    else if (installEvt) top = `<button class="btn primary" data-act="appinstall">${esc(t('app_install'))}</button>`;
+    else top = '';
+    const order = ['android', 'windows', 'iphone'].sort((a, b) => (b === pf) - (a === pf));
+    const how = order.map((k) => `<div class="howto${k === pf ? ' mine' : ''}"><b>${esc(t('app_' + k + '_t'))}</b><p>${esc(t('app_' + k))}</p></div>`).join('');
+    return `<h2>${esc(t('app_title'))}</h2>
+      <p>${esc(t('app_lead'))}</p>
+      ${top}
+      ${isStandalone() ? '' : `<h3>${esc(t('app_how'))}</h3>${how}`}
+      <div class="stackbtns"><button class="btn" data-act="back">${esc(t('back'))}</button></div>`;
   }
 
   function leaveAskHTML() {
@@ -444,6 +476,7 @@
           <button class="btn" data-act="${net.view && net.view.status === 'playing' && net.view.me.seat !== -1 ? 'leaveask' : 'leavetable'}">${esc(t('leave_table'))}</button>
           <button class="btn" data-act="settings">${esc(t('settings'))}</button>
           <button class="btn" data-act="rules">${esc(t('rules'))}</button>
+          ${isStandalone() ? '' : `<button class="btn" data-act="app">${esc(t('app_btn'))}</button>`}
         </div>`;
     }
     return `
@@ -455,6 +488,7 @@
         <button class="btn" data-act="new2">${esc(t('new2'))}</button>
         <button class="btn" data-act="settings">${esc(t('settings'))}</button>
         <button class="btn" data-act="rules">${esc(t('rules'))}</button>
+        ${isStandalone() ? '' : `<button class="btn" data-act="app">${esc(t('app_btn'))}</button>`}
       </div>`;
   }
 
@@ -604,6 +638,7 @@
     else if (overlay === 'menu') html = menuHTML();
     else if (overlay === 'leaveask') html = net.view ? leaveAskHTML() : menuHTML();
     else if (overlay === 'settings') html = settingsHTML();
+    else if (overlay === 'app') html = appHTML();
     else if (overlay === 'rules') html = D().rules_html + `<div class="stackbtns"><button class="btn" data-act="back">${esc(t('back'))}</button></div>`;
     else if (overlay === 'pile') html = pileHTML();
     else if (overlay === 'log') html = logHTML();
@@ -1108,6 +1143,17 @@
       case 'menu': prevOverlay = null; overlay = 'menu'; break;
       case 'leaveask': overlay = 'leaveask'; break;
       case 'rules': prevOverlay = overlay; overlay = 'rules'; break;
+      case 'app': prevOverlay = overlay; overlay = 'app'; break;
+      case 'appinstall':
+        if (installEvt) {
+          const ev = installEvt;
+          installEvt = null;
+          try {
+            ev.prompt();
+            if (ev.userChoice) ev.userChoice.then((c) => { if (c && c.outcome === 'accepted') appInstalled = true; render(); }).catch(() => {});
+          } catch (e) { /* výzva už použitá */ }
+        }
+        break;
       case 'settings': prevOverlay = overlay; overlay = 'settings'; break;
       case 'back': overlay = prevOverlay; prevOverlay = null; break;
       case 'showpile': overlay = 'pile'; break;
@@ -1306,6 +1352,7 @@
     }
     render();
     schedule();
+    setupApp();
     const code = new URLSearchParams(location.search).get('t');
     checkOnline().then(() => {
       if (net.available && code) {
@@ -1314,6 +1361,24 @@
       }
       render();
     });
+  }
+
+  function setupApp() {
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault(); // tlačítko „Nainstalovat“ máme vlastní
+      installEvt = e;
+      if (overlay === 'app' || overlay === 'start') render();
+    });
+    window.addEventListener('appinstalled', () => {
+      installEvt = null;
+      appInstalled = true;
+      toast(t('app_installed_toast'), 'info');
+      render();
+    });
+    const local = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+    if ('serviceWorker' in navigator && (location.protocol === 'https:' || local)) {
+      navigator.serviceWorker.register('/sw.js').catch(() => { /* např. v náhledu, kde sw.js není */ });
+    }
   }
 
   if (window.claude && window.claude.hot && window.claude.hot.ready) window.claude.hot.ready(start);

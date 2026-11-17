@@ -17,6 +17,7 @@ První zaregistrovaný účet je správce (může resetovat zapomenutá hesla).
 | Cesta | Co tam je |
 | --- | --- |
 | `public/index.html` | Hotová hra v jednom souboru – tohle Cloudflare zveřejňuje |
+| `public/manifest.webmanifest`, `public/sw.js`, `public/icons/` | Instalovatelná aplikace (Android, Windows, iPhone) a offline hra proti robotům |
 | `src/client/engine.js` | Pravidla hry (balíček, vykládky, hromádka, body) |
 | `src/client/bot.js` | Robot (lehký, střední, těžký) |
 | `src/client/i18n.js` | Překlady (cs, en, pt) |
@@ -28,6 +29,8 @@ První zaregistrovaný účet je správce (může resetovat zapomenutá hesla).
 | `tools/ladder.js` | Porovnání obtížností robotů |
 | `tools/servertest*.mjs` | Testy serveru (spustit proti `npx wrangler dev`) |
 | `tools/e2e.py` | Test ve dvou prohlížečích (Playwright) |
+| `tools/pwatest.py` | Test instalovatelné aplikace a offline režimu |
+| `tools/icons.py` | Vyrobí ikony aplikace |
 
 ## Úpravy
 

@@ -1,0 +1,20 @@
+{
+  "id": "/",
+  "name": "Canastra família Bona",
+  "short_name": "Canastra Bona",
+  "description": "Brazilská kanasta podle rodinných pravidel: proti robotům nebo online s přáteli.",
+  "lang": "cs",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#072521",
+  "theme_color": "#0d3833",
+  "categories": ["games", "entertainment"],
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
+    { "src": "/icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

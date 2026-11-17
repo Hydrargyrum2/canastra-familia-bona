@@ -504,3 +504,12 @@ table.res tr.tot td:nth-child(2) { color: var(--brass); }
   .fx-throw, .fx-emote, .fx-splat span, .fx-splat i { animation-duration: 0.01s !important; }
 }
 .sheet > .btn { display: block; width: 100%; margin-top: 8px; }
+
+/* ---------- aplikace (instalace) ---------- */
+.btn.appbtn { margin-top: 4px; background: rgba(241,195,76,0.12); border-color: rgba(241,195,76,0.6); color: var(--brass); }
+.howto { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; margin: 8px 0; }
+.howto b { display: block; font-size: 14px; margin-bottom: 2px; }
+.howto p { margin: 0; font-size: 14px; color: var(--muted); }
+.howto.mine { border-color: rgba(241,195,76,0.6); background: rgba(241,195,76,0.07); }
+.howto.mine p { color: inherit; }
+.okline { color: #9fe0b5; font-weight: 700; }
