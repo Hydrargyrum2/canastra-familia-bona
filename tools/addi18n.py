@@ -17,7 +17,7 @@ for li in sorted(range(3), reverse=True):
     end = anchors[li + 1] if li < 2 else len(lines)
     for k in block:
         for i in range(start, end):
-            if re.match(r'\s*' + re.escape(k) + r':\s', lines[i]) and i != anchors[li]:
+            if lines[i] is not None and re.match(r'\s*' + re.escape(k) + r':\s', lines[i]) and i != anchors[li]:
                 lines[i] = None
     ins = ['    %s: %s,' % (k, json.dumps(v, ensure_ascii=False)) for k, v in block.items()]
     lines[anchors[li] + 1:anchors[li] + 1] = ins
