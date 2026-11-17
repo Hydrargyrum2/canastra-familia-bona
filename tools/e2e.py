@@ -1,5 +1,7 @@
 # Dva hráči v prohlížeči: registrace, stůl, pozvánka, hra, chat, emote.
 import asyncio, random, string
+import sys as _s, os as _o; _s.path.insert(0, _o.path.dirname(_o.path.abspath(__file__)))
+from cuthelp import pass_cut
 from playwright.async_api import async_playwright
 BASE = 'http://127.0.0.1:8787'
 SH = 'tools/shots/'
@@ -52,6 +54,7 @@ async def main():
         await A.wait_for_function("document.querySelectorAll('.seats .seatrow .pname:not(.empty)').length === 2", timeout=8000)
         await A.screenshot(path=SH + 'a-room.png')
         await A.click('[data-act=start]')
+        await pass_cut(A, B)
         await A.wait_for_selector('#hand .hc', timeout=8000)
         await B.wait_for_selector('#hand .hc', timeout=8000)
         print('hra běží; A karet', await A.locator('#hand .hc').count(), '| B karet', await B.locator('#hand .hc').count())

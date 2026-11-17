@@ -372,9 +372,28 @@
   }
 
   // ---------- jeden krok robota ----------
+  // Hodí se líznutá karta k ruce? (žolík, stejná hodnota, nebo stejná barva do dvou míst)
+  function cardFits(hand, c) {
+    if (E.isWild(c)) return true;
+    if (E.isThree(c)) return E.isBlack3(c); // černá trojka se hodí na blokování
+    return hand.some((x) => x.id !== c.id && !E.isWild(x) && !E.isThree(x) &&
+      (x.r === c.r || (x.s === c.s && Math.abs(E.pos(x) - E.pos(c)) <= 2)));
+  }
   function step(st, pi, level) {
     LV = level === 'easy' || level === 'medium' ? level : 'hard';
     if (st.current !== pi) return { ok: false, error: E.M('not_your_turn') };
+    if (st.phase === 'cut') {
+      // zkušený robot míří přesně, slabší se trochu splete; karty se pak ještě svezou (engine)
+      const target = E.RULES.handSize * st.players.length;
+      const miss = LV === 'hard' ? 0 : LV === 'medium' ? 3 : 5;
+      return E.cutDeck(st, pi, target + Math.floor(Math.random() * (2 * miss + 1)) - miss);
+    }
+    if (st.phase === 'play' && E.canRedraw && E.canRedraw(st, pi)) {
+      const hand = st.players[pi].hand;
+      const c = hand.find((x) => x.id === st.turn.drawnId);
+      if (c && !cardFits(hand, c)) return E.redraw(st, pi);
+      st.turn.canRedraw = false; // nechává si ji
+    }
     if (st.phase === 'draw') {
       const choice = wantsPile(st, pi);
       if (choice) {
@@ -405,7 +424,7 @@
   // Zpětná kompatibilita: „hladová“ akce (používají ji testy).
   const greedyAction = (st, pi) => pickAction(st, pi, 'all');
 
-  const api = { step, candidateMelds, greedyAction, discardOrder, wantsPile, pileChoice, dangerLevel, chooseMode, TUNE };
+  const api = { step, candidateMelds, greedyAction, discardOrder, wantsPile, pileChoice, dangerLevel, chooseMode, cardFits, TUNE };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.Bot = api;
 })(typeof window !== 'undefined' ? window : globalThis);

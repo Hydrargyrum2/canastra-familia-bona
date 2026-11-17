@@ -891,7 +891,7 @@ export class Table extends DurableObject {
   // ---------- hra ----------
   startGame() {
     const s = this.s;
-    s.game = E.newGame(s.seats.map((x) => ({ name: x.name, isBot: x.kind === 'bot' })));
+    s.game = E.newGame(s.seats.map((x) => ({ name: x.name, isBot: x.kind === 'bot' })), { family: true });
     E.startRound(s.game);
     s.status = 'playing';
     s.ready = {};
@@ -935,6 +935,8 @@ export class Table extends DurableObject {
       case 'add': return E.addToMeld(g, seat, meldId, ids, prefer);
       case 'discard': return E.discard(g, seat, Number(a.id));
       case 'undo': return E.undoTurn(g, seat);
+      case 'cut': return E.cutDeck(g, seat, Number(a.aim));
+      case 'redraw': return E.redraw(g, seat);
       default: return { ok: false, error: M('bad_request') };
     }
   }
@@ -975,7 +977,7 @@ export class Table extends DurableObject {
       await this.save();
       this.broadcast();
     }
-    if (s.status === 'playing' && s.game && (s.game.phase === 'draw' || s.game.phase === 'play') && this.isBotSeat(s.game.current)) {
+    if (s.status === 'playing' && s.game && (s.game.phase === 'draw' || s.game.phase === 'play' || s.game.phase === 'cut') && this.isBotSeat(s.game.current)) {
       s.timers.bot = s.timers.bot || Date.now() + (Number(this.env.BOT_DELAY_MS) || BOT_DELAY_MS);
     } else {
       delete s.timers.bot;
@@ -1008,7 +1010,7 @@ export class Table extends DurableObject {
     if (s.timers.bot && s.timers.bot <= now) {
       delete s.timers.bot;
       const g = s.game;
-      if (s.status === 'playing' && (g.phase === 'draw' || g.phase === 'play') && this.isBotSeat(g.current)) {
+      if (s.status === 'playing' && (g.phase === 'draw' || g.phase === 'play' || g.phase === 'cut') && this.isBotSeat(g.current)) {
         const r = B.step(g, g.current, this.levelOf(g.current));
         if (!r.ok) this.emergency(g, g.current);
         this.afterGameChange();
@@ -1047,6 +1049,7 @@ export class Table extends DurableObject {
       log: g.log.slice(-40),
       lastRound: g.lastRound,
       winner: g.winner,
+      cutInfo: g.cutInfo || null,
       turn: {
         from: t.from || null,
         laid: t.laid || 0,
@@ -1055,6 +1058,7 @@ export class Table extends DurableObject {
         lastTurn: !!t.lastTurn,
         canUndo: !!t.snap && g.current === seat,
         newIds: g.current === seat ? t.newIds || [] : [],
+        canRedraw: g.current === seat && E.canRedraw(g, seat),
       },
     };
   }

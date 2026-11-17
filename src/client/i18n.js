@@ -234,6 +234,44 @@
     app_windows: "Klikni na ikonu instalace vpravo v adresním řádku. Případně v nabídce prohlížeče najdi „Aplikace“ nebo „Uložit a sdílet“ a zvol instalaci.",
     app_iphone_t: "iPhone a iPad (Safari)",
     app_installed_toast: "Hotovo, aplikace je nainstalovaná.",
+    log_cut_wait: "{name} snímá balíček.",
+    log_cut_wait_you: "Začínáš kolo. Sejmi balíček.",
+    log_cut: "{name} snímá balíček. Dole zůstalo {left}, potřeba bylo {target}.",
+    log_cut_you: "Snímáš balíček. Dole zůstalo {left}, potřeba bylo {target}.",
+    log_cut_hit: "{name} snímá přesně {target}! Tým získává +{bonus} bodů.",
+    log_cut_hit_you: "Snímáš přesně {target}! Tvůj tým získává +{bonus} bodů.",
+    log_redraw: "{name} vrací líznutou kartu {card} na hromádku a líže si jinou.",
+    log_redraw_you: "Vracíš {card} na hromádku a lížeš si jinou.",
+    cant_redraw: "Kartu teď vyměnit nejde. Jde to jen hned po prvním líznutí v kole.",
+    cut_btn: "Sejmout balíček",
+    cut_wait: "{name} snímá balíček",
+    cut_hint_me: "Začínáš kolo. Sejmi balíček tak, ať dole zůstane přesně {n} karet.",
+    cut_title: "Sejmutí balíčku",
+    cut_lead: "Klepni nebo táhni prstem tam, kde chceš balíček rozdělit. Když dole zůstane přesně {n} karet, tvůj tým dostane +{bonus} bodů. Karty se při snímání trochu svezou, takže přesný zásah je vzácnost.",
+    cut_top: "vršek",
+    cut_bottom: "spodek",
+    cut_tap: "Klepni do balíčku tam, kde ho chceš sejmout.",
+    cut_ready: "Místo můžeš ještě posunout. Pak stiskni Sejmout.",
+    cut_go: "Sejmout",
+    cut_hit_title: "Přesně!",
+    cut_miss_title: "Sejmuto",
+    cut_left_of: "zůstalo dole · potřeba {n}",
+    cut_hit_me: "Dole zůstalo přesně tolik, kolik se rozdává. Tvůj tým má +{bonus} bodů.",
+    cut_hit_other: "{name} snímá přesně! +{bonus} bodů pro tým.",
+    cut_miss_me: "Dole zůstalo {n}, potřeba bylo {target}. Tentokrát bez bodů.",
+    cut_miss_other: "{name} snímá. Dole zůstalo {n}, potřeba bylo {target}.",
+    cut_play: "Hrát",
+    redraw_btn: "Vyměnit kartu",
+    redraw_hint: "Vrátit líznutou kartu na hromádku a líznout si jinou. Jde to jen teď.",
+    redraw_status: "Začínáš kolo: líznutou kartu můžeš jednou vyměnit, nebo rovnou hrát.",
+    row_cut: "Za sejmutí",
+    coach_cut: "Na začátku kola snímáš balíček. Zkus ho rozdělit tak, aby dole zůstalo {n} karet. Přesný zásah dá +{bonus} bodů.",
+    coach_redraw: "Líznutá karta {card} se ti moc nehodí. Můžeš ji jednou vyměnit tlačítkem 🔄 Vyměnit kartu.",
+    coach_redraw_keep: "Líznutá karta {card} se ti hodí, nech si ji. Vyměnit by šla jen teď, pak už ne.",
+    tut_s5_t: "Začátek kola",
+    tut_s5: "Kdo kolo začíná, nejdřív sejme balíček. Když dole zůstane přesně tolik karet, kolik se rozdává (26, ve čtyřech 52), jeho tým dostane 100 bodů. Pak smí jednou vrátit první líznutou kartu na hromádku a líznout si jinou. Kdo začíná, se každé kolo střídá.",
+    tut_s6_t: "Konec kola",
+    tut_s6: "Kolo zavřeš, když ti nezůstane žádná karta a máš aspoň jednu canastu. Kdo zavře, dostane i body za karty, které zůstaly soupeři v ruce. Teď si to zkus proti lehkému robotovi, nápověda ti poradí každý tah.",
     pile_add_alone: "K vykládce na stole smíš z hromádky přiložit jen samotnou vrchní kartu, z ruky k ní nic. Zruš výběr karet a klepni na vykládku.",
     tut_s3: "Na začátku tahu si lízneš kartu z balíčku, nebo vezmeš celou hromádku. Hromádku můžeš vzít jen tehdy, když její vrchní kartu hned vyložíš s kartami z ruky, nebo ji samotnou přiložíš ke své vykládce. Pak vykládáš a nakonec jednu kartu odhodíš.",
     app_iphone: "Otevři hru v Safari (ne uvnitř WhatsAppu, Instagramu apod.). Klepni na ⋯ vedle adresy (u starších iOS na tlačítko Sdílet dole), pak Sdílet, sjeď dolů na „Přidat na plochu“, nech zapnuté „Otevřít jako webovou aplikaci“ a klepni na Přidat.",
@@ -361,8 +399,6 @@
     tut_s3_t: "Tah",
     tut_s4_t: "Na co si dát pozor",
     tut_s4: "Odhozená černá trojka, dvojka nebo joker hromádku zablokuje. Červené trojky se vyloží samy a dolízneš si za ně. Když máš nad 2 000 bodů, první vykládka v kole musí mít aspoň 150 bodů.",
-    tut_s5_t: "Konec kola",
-    tut_s5: "Kolo zavřeš, když ti nezůstane žádná karta a máš aspoň jednu canastu. Kdo zavře, dostane i body za karty, které zůstaly soupeři v ruce. Teď si to zkus proti lehkému robotovi, nápověda ti poradí každý tah.",
     coach_draw: "Lízni si kartu z balíčku.",
     coach_no_pile: "Hromádku teď vzít nejde: {why}",
     coach_pile: "Vrchní kartu z hromádky ({card}) můžeš hned vyložit, a tím si vzít celou hromádku. Klepni na Ukaž mi a pak na Vzít hromádku.",
@@ -443,6 +479,12 @@
         <li>Červené trojky se samy vyloží a dolízne se za ně karta.</li>
         <li>Zavřeš, když ti nezůstane žádná karta a máš aspoň jednu canastu.</li>
         <li>Když dojde balíček, další hráč si zahraje už jen s hromádkou. Karty v ruce pak propadají.</li>
+      </ul>
+      <h3>Začátek kola</h3>
+      <ul>
+        <li>V prvním kole rozhodne los, kdo začíná. Pak se začínající hráč každé kolo střídá (ve čtyřech jde dál po kruhu).</li>
+        <li>Začínající hráč sejme balíček. Když dole zůstane přesně 26 karet (ve čtyřech 52), jeho tým hned dostane 100 bodů. Pak se rozdá po 13 kartách.</li>
+        <li>Začínající hráč smí jednou za kolo, hned po prvním líznutí, vrátit líznutou kartu na hromádku a líznout si jinou. Jen dokud nic nevyložil. Pak hraje normálně a tah končí odhozením.</li>
       </ul>
       <h3>Body</h3>
       <ul>
@@ -680,6 +722,44 @@
     app_windows: "Click the install icon on the right of the address bar. Or look for “Apps” or “Save and share” in the browser menu and choose install.",
     app_iphone_t: "iPhone and iPad (Safari)",
     app_installed_toast: "Done, the app is installed.",
+    log_cut_wait: "{name} is cutting the deck.",
+    log_cut_wait_you: "You start this round. Cut the deck.",
+    log_cut: "{name} cuts the deck. {left} left at the bottom, {target} needed.",
+    log_cut_you: "You cut the deck. {left} left at the bottom, {target} needed.",
+    log_cut_hit: "{name} cuts exactly {target}! Their team gets +{bonus} points.",
+    log_cut_hit_you: "You cut exactly {target}! Your team gets +{bonus} points.",
+    log_redraw: "{name} puts the drawn {card} on the pile and draws another card.",
+    log_redraw_you: "You put {card} on the pile and draw another card.",
+    cant_redraw: "You can't swap the card now. It's only allowed right after the first draw of the round.",
+    cut_btn: "Cut the deck",
+    cut_wait: "{name} is cutting the deck",
+    cut_hint_me: "You start this round. Cut the deck so exactly {n} cards stay at the bottom.",
+    cut_title: "Cut the deck",
+    cut_lead: "Tap or drag where you want to split the deck. If exactly {n} cards stay at the bottom, your team gets +{bonus} points. The cards slip a little when you cut, so an exact hit is rare.",
+    cut_top: "top",
+    cut_bottom: "bottom",
+    cut_tap: "Tap the deck where you want to cut it.",
+    cut_ready: "You can still move it. Then press Cut.",
+    cut_go: "Cut",
+    cut_hit_title: "Exactly!",
+    cut_miss_title: "Deck cut",
+    cut_left_of: "left at the bottom · {n} needed",
+    cut_hit_me: "Exactly as many cards as are dealt stayed at the bottom. Your team gets +{bonus} points.",
+    cut_hit_other: "{name} cut exactly! +{bonus} points for their team.",
+    cut_miss_me: "{n} stayed at the bottom, {target} were needed. No points this time.",
+    cut_miss_other: "{name} cut the deck. {n} stayed at the bottom, {target} were needed.",
+    cut_play: "Play",
+    redraw_btn: "Swap card",
+    redraw_hint: "Put the drawn card on the pile and draw another. Only allowed now.",
+    redraw_status: "You start this round: you may swap the drawn card once, or just play.",
+    row_cut: "Deck cut",
+    coach_cut: "At the start of the round you cut the deck. Try to split it so {n} cards stay at the bottom. An exact hit is worth +{bonus} points.",
+    coach_redraw: "The {card} you drew doesn't help you much. You can swap it once with 🔄 Swap card.",
+    coach_redraw_keep: "The {card} you drew fits your hand, keep it. You could only swap it now.",
+    tut_s5_t: "Starting a round",
+    tut_s5: "Whoever starts the round first cuts the deck. If exactly as many cards as are dealt stay at the bottom (26, or 52 with four players), their team gets 100 points. Then they may once put their first drawn card on the pile and draw another. The starting player changes every round.",
+    tut_s6_t: "Ending a round",
+    tut_s6: "You go out when you have no cards left and at least one canasta. Whoever goes out also scores the cards left in the opponent's hand. Now try it against an easy bot, the tips will help you every turn.",
     pile_add_alone: "When adding to a meld on the table, you may only add the top card of the pile by itself, nothing from your hand. Clear your selection and tap the meld.",
     tut_s3: "Start your turn by drawing from the stock or taking the whole discard pile. You can only take the pile if you immediately meld its top card with cards from your hand, or add the top card alone to one of your melds. Then meld what you want and finally discard one card.",
     app_iphone: "Open the game in Safari (not inside WhatsApp, Instagram etc.). Tap ⋯ next to the address (on older iOS the Share button at the bottom), then Share, scroll down to “Add to Home Screen”, keep “Open as Web App” on and tap Add.",
@@ -807,8 +887,6 @@
     tut_s3_t: "Your turn",
     tut_s4_t: "Watch out",
     tut_s4: "A discarded black three, two or joker blocks the pile. Red threes are laid down automatically and you draw a replacement. Above 2,000 points, your first meld in a round must be worth at least 150.",
-    tut_s5_t: "Ending a round",
-    tut_s5: "You go out when you have no cards left and at least one canasta. Whoever goes out also scores the cards left in the opponent's hand. Now try it against an easy bot, the tips will help you every turn.",
     coach_draw: "Draw a card from the stock.",
     coach_no_pile: "You can't take the pile right now: {why}",
     coach_pile: "You can meld the top card of the pile ({card}) right away and take the whole pile. Tap Show me and then Take pile.",
@@ -889,6 +967,12 @@
         <li>Red threes are laid down automatically and replaced with a new card.</li>
         <li>You go out when you have no cards left and at least one canasta.</li>
         <li>When the stock runs out, the next player may still play by taking the pile. Cards left in hand are then lost.</li>
+      </ul>
+      <h3>Starting a round</h3>
+      <ul>
+        <li>In the first round a coin toss decides who starts. After that the starting player changes every round (with four players it moves around the table).</li>
+        <li>The starting player cuts the deck. If exactly 26 cards stay at the bottom (52 with four players), their team gets 100 points straight away. Then 13 cards are dealt to each player.</li>
+        <li>Once per round, right after the first draw, the starting player may put the drawn card on the discard pile and draw another, as long as nothing has been melded yet. The turn then goes on as usual and ends with a discard.</li>
       </ul>
       <h3>Scoring</h3>
       <ul>
@@ -1126,6 +1210,44 @@
     app_windows: "Clique no ícone de instalação à direita da barra de endereço. Ou procure “Apps” ou “Salvar e compartilhar” no menu do navegador e escolha instalar.",
     app_iphone_t: "iPhone e iPad (Safari)",
     app_installed_toast: "Pronto, o aplicativo está instalado.",
+    log_cut_wait: "{name} está cortando o baralho.",
+    log_cut_wait_you: "Você começa esta rodada. Corte o baralho.",
+    log_cut: "{name} corta o baralho. Ficaram {left} embaixo, eram precisas {target}.",
+    log_cut_you: "Você corta o baralho. Ficaram {left} embaixo, eram precisas {target}.",
+    log_cut_hit: "{name} corta exatamente {target}! A dupla ganha +{bonus} pontos.",
+    log_cut_hit_you: "Você corta exatamente {target}! Sua dupla ganha +{bonus} pontos.",
+    log_redraw: "{name} põe a carta comprada {card} no lixo e compra outra.",
+    log_redraw_you: "Você põe {card} no lixo e compra outra carta.",
+    cant_redraw: "Agora não dá para trocar a carta. Só logo depois da primeira compra da rodada.",
+    cut_btn: "Cortar o baralho",
+    cut_wait: "{name} está cortando o baralho",
+    cut_hint_me: "Você começa esta rodada. Corte o baralho para ficarem exatamente {n} cartas embaixo.",
+    cut_title: "Cortar o baralho",
+    cut_lead: "Toque ou arraste onde quer dividir o baralho. Se ficarem exatamente {n} cartas embaixo, sua dupla ganha +{bonus} pontos. As cartas escorregam um pouco no corte, então acertar em cheio é raro.",
+    cut_top: "em cima",
+    cut_bottom: "embaixo",
+    cut_tap: "Toque no baralho onde quer cortar.",
+    cut_ready: "Ainda dá para mudar. Depois toque em Cortar.",
+    cut_go: "Cortar",
+    cut_hit_title: "Na mosca!",
+    cut_miss_title: "Baralho cortado",
+    cut_left_of: "ficaram embaixo · precisava {n}",
+    cut_hit_me: "Ficaram embaixo exatamente as cartas que se distribuem. Sua dupla ganha +{bonus} pontos.",
+    cut_hit_other: "{name} cortou na mosca! +{bonus} pontos para a dupla.",
+    cut_miss_me: "Ficaram {n} embaixo, eram precisas {target}. Desta vez sem pontos.",
+    cut_miss_other: "{name} cortou o baralho. Ficaram {n} embaixo, eram precisas {target}.",
+    cut_play: "Jogar",
+    redraw_btn: "Trocar carta",
+    redraw_hint: "Pôr a carta comprada no lixo e comprar outra. Só agora.",
+    redraw_status: "Você começa a rodada: pode trocar a carta comprada uma vez, ou jogar direto.",
+    row_cut: "Corte",
+    coach_cut: "No começo da rodada você corta o baralho. Tente dividir para ficarem {n} cartas embaixo. Acertar em cheio vale +{bonus} pontos.",
+    coach_redraw: "A carta {card} que você comprou não ajuda muito. Você pode trocá-la uma vez com 🔄 Trocar carta.",
+    coach_redraw_keep: "A carta {card} que você comprou serve, fique com ela. Só daria para trocar agora.",
+    tut_s5_t: "Começo da rodada",
+    tut_s5: "Quem começa a rodada primeiro corta o baralho. Se ficarem embaixo exatamente as cartas que se distribuem (26, ou 52 com quatro jogadores), a dupla ganha 100 pontos. Depois pode, uma vez, pôr a primeira carta comprada no lixo e comprar outra. Quem começa muda a cada rodada.",
+    tut_s6_t: "Fim da rodada",
+    tut_s6: "Você bate quando fica sem cartas e tem pelo menos uma canastra. Quem bate ganha também os pontos das cartas que ficaram na mão do adversário. Agora experimente contra um robô fácil, as dicas vão ajudar em cada jogada.",
     pile_add_alone: "Para encaixar num jogo da mesa, só a carta de cima do lixo pode ir sozinha, nada da mão. Desmarque as cartas e toque no jogo.",
     tut_s3: "No começo da vez você compra do monte ou pega o lixo inteiro. Só dá para pegar o lixo se você baixar a carta de cima na hora com cartas da mão, ou encaixar só ela num jogo seu. Depois baixe o que quiser e, no fim, descarte uma carta.",
     app_iphone: "Abra o jogo no Safari (não dentro do WhatsApp, Instagram etc.). Toque em ⋯ ao lado do endereço (em iOS mais antigo, no botão Compartilhar embaixo), depois Compartilhar, role até “Adicionar à Tela de Início”, deixe “Abrir como app web” ligado e toque em Adicionar.",
@@ -1253,8 +1375,6 @@
     tut_s3_t: "A jogada",
     tut_s4_t: "Atenção",
     tut_s4: "Um três preto, dois ou curinga descartado tranca o lixo. Os três vermelhos são baixados sozinhos e você compra outra carta no lugar. Acima de 2.000 pontos, o primeiro jogo da rodada precisa valer pelo menos 150.",
-    tut_s5_t: "Fim da rodada",
-    tut_s5: "Você bate quando fica sem cartas e tem pelo menos uma canastra. Quem bate ganha também os pontos das cartas que ficaram na mão do adversário. Agora experimente contra um robô fácil, as dicas vão ajudar em cada jogada.",
     coach_draw: "Compre uma carta do monte.",
     coach_no_pile: "Agora não dá para pegar o lixo: {why}",
     coach_pile: "Você pode baixar a carta de cima do lixo ({card}) agora e pegar o lixo inteiro. Toque em Mostrar e depois em Pegar o lixo.",
@@ -1335,6 +1455,12 @@
         <li>Os três vermelhos são baixados automaticamente e você compra outra carta no lugar.</li>
         <li>Você bate quando fica sem cartas e tem pelo menos uma canastra.</li>
         <li>Quando o monte acaba, o próximo jogador só pode jogar pegando o lixo. As cartas na mão não contam.</li>
+      </ul>
+      <h3>Começo da rodada</h3>
+      <ul>
+        <li>Na primeira rodada um sorteio decide quem começa. Depois quem começa muda a cada rodada (com quatro jogadores passa ao próximo da mesa).</li>
+        <li>Quem começa corta o baralho. Se ficarem exatamente 26 cartas embaixo (52 com quatro jogadores), a dupla ganha 100 pontos na hora. Depois cada um recebe 13 cartas.</li>
+        <li>Uma vez por rodada, logo depois da primeira compra, quem começa pode pôr a carta comprada no lixo e comprar outra, desde que ainda não tenha baixado nada. Depois a jogada segue normal e termina com um descarte.</li>
       </ul>
       <h3>Pontos</h3>
       <ul>

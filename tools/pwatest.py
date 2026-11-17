@@ -1,5 +1,7 @@
 """Test instalovatelné aplikace: manifest, service worker, offline načtení, obrazovka Aplikace."""
 import asyncio, json, sys
+import sys as _s, os as _o; _s.path.insert(0, _o.path.dirname(_o.path.abspath(__file__)))
+from cuthelp import pass_cut
 from playwright.async_api import async_playwright
 BASE = 'http://127.0.0.1:8787'
 SH = 'tools/shots/'
@@ -41,10 +43,16 @@ async def main():
         # offline: stránka se načte z uložené kopie a jde hrát proti robotům
         await ctx.set_offline(True)
         await pg.reload()
+        await pass_cut(pg)
         await pg.wait_for_selector('#hand .hc', timeout=8000)
         n = await pg.locator('#hand .hc').count()
         check(n >= 13, f'offline se hra spustí ({n} karet v ruce)')
+        if await pg.locator('#actions [data-act=draw]').count():  # začínám já: líznout, ať se něco stane
+            await pg.click('#actions [data-act=draw]')
         log0 = await pg.inner_text('.announce')
+        if await pg.locator('#actions [data-act=discard]').count():
+            await pg.locator('#hand .hc').first.click()
+            await pg.click('#actions [data-act=discard]')
         await pg.wait_for_function("document.querySelector('.announce') && document.querySelector('.announce').innerText !== " + json.dumps(log0), timeout=8000)
         check(True, 'offline robot hraje: ' + (await pg.inner_text('.announce')))
         await ctx.set_offline(False)

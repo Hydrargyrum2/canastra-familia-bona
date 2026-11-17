@@ -49,6 +49,7 @@ function decide(view) {
   const g = view.game;
   const me = view.me.seat;
   if (!g || g.current !== me) return null;
+  if (g.phase === 'cut') return { type: 'cut', aim: 26 };
   if (g.phase === 'draw') { noMeldTurn[me] = false; return g.stockCount > 0 ? { type: 'draw' } : { type: 'pass' }; }
   if (g.phase !== 'play') return null;
   const st = { ...g, stock: { length: g.stockCount } }; // pro funkce robota

@@ -49,6 +49,7 @@ function decide(view) {
   const g = view.game;
   const me = view.me.seat;
   if (!g || g.current !== me) return null;
+  if (g.phase === 'cut') return { type: 'cut', aim: 26 };
   if (g.phase === 'draw') { noMeldTurn[me] = false; return g.stockCount > 0 ? { type: 'draw' } : { type: 'pass' }; }
   if (g.phase !== 'play') return null;
   const st = { ...g, stock: { length: g.stockCount } }; // pro funkce robota
@@ -116,7 +117,9 @@ async function main() {
   check(em.m.id === 'tomato' && em.m.seat === 2, 'emote rajče');
   ta.send({ t: 'start' });
   const started = await ta.wait((m) => m.t === 'state' && m.s.status === 'playing');
-  check(started.s.game.players[0].hand && started.s.game.players[0].hand.length >= 13, 'hra začala, Alice vidí svých 13+ karet');
+  const g0 = started.s.game;
+  check(g0.phase === 'cut' && g0.players.every((p) => p.handCount === 0) && g0.stockCount === 108, 'hra začala sejmutím balíčku (zatím nikdo nemá karty)');
+  check(g0.current >= 0 && g0.current < 4, 'začíná náhodný hráč: ' + g0.current);
 
   console.log('Hra (2 lidé + 2 roboti)');
   let leak = false, steps = 0, rounds = new Set(), dcTested = false;

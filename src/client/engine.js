@@ -8,7 +8,7 @@
   const ORDER = ['4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A']; // 4 nejnižší, eso nejvyšší
   const SET_RANKS = ['K', 'A', '4'];
   const M = (k, p) => ({ k, p: p || {} }); // zpráva pro překlad: klíč + parametry
-  const RULES = { target: 4000, openThreshold: 2000, openMin: 150, handSize: 13, canasta: 7 };
+  const RULES = { target: 4000, openThreshold: 2000, openMin: 150, handSize: 13, canasta: 7, cutBonus: 100, cutJitter: 2 };
 
   // ---------- karty ----------
   function makeDeck() {
@@ -170,14 +170,21 @@
   }
 
   // ---------- stav hry ----------
-  function newGame(players) {
+  // opts.family: rodinná pravidla – los, kdo začne první kolo; sejmutí balíčku před každým
+  // kolem (+100 za přesný počet); začínající hráč smí jednou vyměnit první líznutou kartu.
+  function newGame(players, opts) {
+    const family = !!(opts && opts.family);
+    const n = players.length;
+    const rng = (opts && opts.rng) || Math.random;
     return {
+      family,
       players: players.map((p, i) => ({ name: p.name, isBot: !!p.isBot, hand: [], team: i % 2 })),
       teams: [0, 1].map(() => ({ score: 0, melds: [], red3: [], opened: false, needOpen: false })),
       stock: [],
       pile: [],
       current: 0,
-      dealer: players.length - 1,
+      // startRound posune rozdávajícího o jedno; začíná hráč po něm
+      dealer: family ? Math.floor(rng() * n) : players.length - 1,
       phase: 'new',
       round: 0,
       turn: null,
@@ -210,6 +217,20 @@
       t.needOpen = t.score >= RULES.openThreshold;
     }
     for (const p of st.players) p.hand = [];
+    st.cutInfo = null;
+    st.current = (st.dealer + 1) % n;
+    if (st.family) {
+      // před rozdáním snímá balíček ten, kdo kolo začíná
+      st.phase = 'cut';
+      st.turn = null;
+      log(st, M('log_cut_wait', { pi: st.current }));
+      return;
+    }
+    dealRound(st);
+  }
+
+  function dealRound(st) {
+    const n = st.players.length;
     for (let k = 0; k < RULES.handSize; k++) {
       for (let i = 1; i <= n; i++) st.players[(st.dealer + i) % n].hand.push(st.stock.pop());
     }
@@ -220,6 +241,52 @@
     st.current = (st.dealer + 1) % n;
     log(st, M('log_round_start', { round: st.round, pi: st.current }));
     beginTurn(st);
+    if (st.family) st.turn.canRedraw = true;
+  }
+
+  // Sejmutí balíčku: hráč ukáže, kolik karet má zůstat dole (aim); ruka se trochu „zachvěje“.
+  // Když dole zbude přesně tolik, kolik se rozdává (13 × počet hráčů), dostane jeho tým +100.
+  function cutDeck(st, pi, aim, rng) {
+    if (st.phase !== 'cut' || st.current !== pi) return fail(M('not_your_turn'));
+    rng = rng || Math.random;
+    const total = st.stock.length;
+    const target = RULES.handSize * st.players.length;
+    let a = Math.round(Number(aim));
+    if (!Number.isFinite(a)) a = target;
+    a = Math.max(1, Math.min(total - 1, a));
+    const j = RULES.cutJitter;
+    const left = Math.max(1, Math.min(total - 1, a + Math.floor(rng() * (2 * j + 1)) - j));
+    const hit = left === target;
+    const team = st.players[pi].team;
+    if (hit) st.teams[team].score += RULES.cutBonus;
+    st.cutInfo = { pi, team, left, target, hit, total, round: st.round };
+    log(st, M(hit ? 'log_cut_hit' : 'log_cut', { pi, left, target, bonus: RULES.cutBonus }));
+    dealRound(st);
+    return ok({ left, hit });
+  }
+
+  // Začínající hráč smí jednou za kolo, hned po prvním líznutí, líznutou kartu odložit na hromádku
+  // a líznout si jinou (dokud nic nevyložil).
+  function canRedraw(st, pi) {
+    const t = st.turn;
+    if (!t || !t.canRedraw || st.phase !== 'play' || st.current !== pi || t.from !== 'stock' || t.laid) return false;
+    return !!st.stock.length && st.players[pi].hand.some((c) => c.id === t.drawnId);
+  }
+  function redraw(st, pi) {
+    if (!canRedraw(st, pi)) return fail(M('cant_redraw'));
+    const p = st.players[pi];
+    const idx = p.hand.findIndex((c) => c.id === st.turn.drawnId);
+    const old = p.hand.splice(idx, 1)[0];
+    st.pile.push(old);
+    st.turn.canRedraw = false;
+    const before = new Set(p.hand.map((x) => x.id));
+    p.hand.push(st.stock.pop());
+    const red = layRed3s(st, pi);
+    st.turn.newIds = p.hand.filter((x) => !before.has(x.id)).map((x) => x.id);
+    st.turn.drawnId = p.hand.length ? p.hand[p.hand.length - 1].id : null;
+    st.turn.snap = snapshot(st);
+    log(st, M('log_redraw', { pi, card: { r: old.r, s: old.s }, red }));
+    return ok({ red3: red });
   }
 
   function layRed3s(st, pi) {
@@ -328,6 +395,7 @@
     p.hand.push(c);
     const red = layRed3s(st, pi);
     st.turn.newIds = p.hand.filter((x) => !before.has(x.id)).map((x) => x.id);
+    st.turn.drawnId = p.hand.length ? p.hand[p.hand.length - 1].id : null;
     st.turn.from = 'stock';
     st.phase = 'play';
     st.turn.snap = snapshot(st);
@@ -574,10 +642,12 @@
       if (closer === ti) {
         for (const p of st.players) if (p.team !== ti) for (const c of p.hand) capturePts += captureValue(c);
       }
-      const total = cardsPts + canastaPts + red3Pts + capturePts;
-      return { cardsPts, canastaPts, canastas, red3: t.red3.length, red3Pts, capturePts, total };
+      const cutPts = st.cutInfo && st.cutInfo.hit && st.cutInfo.team === ti && st.cutInfo.round === st.round ? RULES.cutBonus : 0;
+      const total = cardsPts + canastaPts + red3Pts + capturePts + cutPts;
+      return { cardsPts, canastaPts, canastas, red3: t.red3.length, red3Pts, capturePts, cutPts, total };
     });
-    res.forEach((r, i) => { st.teams[i].score += r.total; });
+    // body za sejmutí se připsaly hned na začátku kola
+    res.forEach((r, i) => { st.teams[i].score += r.total - r.cutPts; });
     st.lastRound = { closer, teams: res };
     st.phase = 'roundOver';
     const scores = st.teams.map((t) => t.score);
@@ -609,7 +679,7 @@
     makeDeck, shuffle, isWild, isThree, isRed3, isBlack3, blocksPile, pos, cardValue, captureValue, sumValue,
     layoutSeq, analyzeNewMeld, analyzeAdd, isCanasta, isClean, hasCanasta, meldOrder, needsOpen,
     newGame, startRound, pileError, checkTakePile, drawStock, takePile, passEnd, checkMeldNew, meldNew, checkAdd, addToMeld,
-    discardError, discard, undoTurn, cardName, totalCards,
+    discardError, discard, undoTurn, cardName, totalCards, cutDeck, canRedraw, redraw, analyzePileAdd,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.Engine = api;

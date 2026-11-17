@@ -242,7 +242,7 @@
     const p = st.players.find((x) => x.team === ti);
     return p ? p.name : '';
   }
-  const myTurn = () => st && st.current === ME && (st.phase === 'draw' || st.phase === 'play') && (!online() || (net.view && net.view.me.seat === ME));
+  const myTurn = () => st && st.current === ME && (st.phase === 'draw' || st.phase === 'play' || st.phase === 'cut') && (!online() || (net.view && net.view.me.seat === ME));
 
   // ---------- hra proti robotům ----------
   function newMatch(m) {
@@ -252,10 +252,13 @@
     const players = m === '2v2'
       ? [{ name: 'Ty' }, { name: 'Caio', isBot: true }, { name: 'Bia', isBot: true }, { name: 'Duda', isBot: true }]
       : [{ name: 'Ty' }, { name: 'Caio', isBot: true }];
-    st = E.newGame(players);
+    st = E.newGame(players, { family: true });
     E.startRound(st);
     sel.clear();
     botFails = 0;
+    cutAim = null;
+    cutAuto = false;
+    cutShown = null;
   }
   function save() {
     if (online()) return;
@@ -393,6 +396,8 @@
     if (st.phase === 'waiting') hint = esc(t('room_waiting'));
     else if (st.phase === 'roundOver' || st.phase === 'gameOver') hint = esc(t('round_over_short'));
     else if (pausedFor() != null) hint = `<span class="paused">${esc(t('paused_wait', { name: nameOf(pausedFor()) }))}</span>`;
+    else if (st.phase === 'cut') hint = myTurn() ? esc(t('cut_hint_me', { n: E.RULES.handSize * st.players.length })) : `<span class="dots">${esc(t('cut_wait', { name: nameOf(st.current) }))}</span>`;
+    else if (myTurn() && canRedrawNow()) hint = esc(t('redraw_status'));
     else if (!myTurn()) hint = `<span class="dots">${esc(t('playing', { name: nameOf(st.current) }))}</span>`;
     else if (st.phase === 'draw') {
       const canPile = !E.pileError(st, ME);
@@ -434,6 +439,10 @@
       return `<button class="btn primary" data-act="openround">${esc(t(st.phase === 'gameOver' ? 'btn_result_game' : 'btn_result_round'))}</button>`;
     }
     if (pausedFor() != null) return `<div class="wait"><span class="paused">⏸ ${esc(t('paused_short', { name: nameOf(pausedFor()) }))}</span></div>`;
+    if (st.phase === 'cut') {
+      return myTurn() ? `<button class="btn primary" data-act="opencut">✂️ ${esc(t('cut_btn'))}</button>`
+        : `<div class="wait"><span class="dots">${esc(t('cut_wait', { name: nameOf(st.current) }))}</span></div>`;
+    }
     if (!myTurn()) return `<div class="wait"><span class="dots">${esc(t('playing', { name: nameOf(st.current) }))}</span></div>`;
     if (st.phase === 'draw') {
       const pileErr = E.pileError(st, ME);
@@ -445,7 +454,8 @@
         <button class="btn" data-act="pile">${esc(t('btn_take_pile'))}</button>`;
     }
     const canUndo = (st.turn.snap || st.turn.canUndo) && (st.turn.from === 'pile' || st.turn.laid > 0);
-    return `<button class="btn ${sel.size >= 3 ? 'primary' : ''}" data-act="meld" ${sel.size >= 3 ? '' : 'disabled'}>${esc(t('btn_meld'))}</button>
+    const redrawBtn = canRedrawNow() ? `<button class="btn redraw" data-act="redraw" title="${esc(t('redraw_hint'))}">🔄 ${esc(t('redraw_btn'))}</button>` : '';
+    return `${redrawBtn}<button class="btn ${sel.size >= 3 ? 'primary' : ''}" data-act="meld" ${sel.size >= 3 ? '' : 'disabled'}>${esc(t('btn_meld'))}</button>
       <button class="btn ${sel.size === 1 ? 'primary' : ''}" data-act="discard" ${sel.size === 1 ? '' : 'disabled'}>${esc(t('btn_discard'))}</button>
       <button class="btn" data-act="undo" ${canUndo ? '' : 'disabled'}>${esc(t('btn_undo'))}</button>`;
   }
@@ -549,12 +559,62 @@
           ${row(t('row_canastas', { a: t0.canastas, b: t1.canastas }), fmt(t0.canastaPts), fmt(t1.canastaPts))}
           ${row(t('row_red3', { a: t0.red3, b: t1.red3 }), fmt(t0.red3Pts), fmt(t1.red3Pts))}
           ${row(t('row_capture'), fmt(t0.capturePts), fmt(t1.capturePts))}
+          ${(t0.cutPts || t1.cutPts) ? row(t('row_cut'), fmt(t0.cutPts || 0), fmt(t1.cutPts || 0)) : ''}
           ${row(t('row_round'), fmt(t0.total), fmt(t1.total), 'sum')}
           ${row(t('row_total'), fmt(st.teams[u].score), fmt(st.teams[th].score), 'tot')}
         </tbody>
       </table>
       <div class="stackbtns">${buttons}</div>`;
   }
+
+  // ---------- sejmutí balíčku a výměna první karty ----------
+  let cutAim = null; // kolik karet má podle hráče zůstat dole
+  let cutShown = null; // kolo, jehož výsledek sejmutí už hráč viděl
+  let cutAuto = false; // okno se sejmutím se samo otevřelo (podruhé už jen tlačítkem)
+  function canRedrawNow() {
+    if (!st || st.phase !== 'play' || !myTurn()) return false;
+    return online() ? !!(st.turn && st.turn.canRedraw) : E.canRedraw(st, ME);
+  }
+  const deckTotal = () => (st && st.stock ? st.stock.length : 108) || 108;
+  function cutHTML() {
+    const total = deckTotal();
+    const target = E.RULES.handSize * st.players.length;
+    const pct = cutAim == null ? null : (cutAim / total) * 100;
+    return `<h2>✂️ ${esc(t('cut_title'))}</h2>
+      <p>${esc(t('cut_lead', { n: target, bonus: E.RULES.cutBonus }))}</p>
+      <div class="cutwrap">
+        <div class="cutdeck" id="cutDeck" style="--lines:${total}" role="slider" aria-label="${esc(t('cut_title'))}" aria-valuemin="1" aria-valuemax="${total - 1}" ${cutAim == null ? '' : `aria-valuenow="${cutAim}"`}>
+          ${pct == null ? '' : `<div class="cuttop" style="bottom:${pct}%;--lines:${total - cutAim}"></div><div class="cutline" style="bottom:${pct}%"></div>`}
+        </div>
+        <div class="cutside"><span>${esc(t('cut_top'))}</span><span class="grow"></span><span>${esc(t('cut_bottom'))}</span></div>
+      </div>
+      <p class="seghint">${esc(t(cutAim == null ? 'cut_tap' : 'cut_ready'))}</p>
+      <div class="stackbtns"><button class="btn primary" data-act="cutgo" ${cutAim == null ? 'disabled' : ''}>✂️ ${esc(t('cut_go'))}</button></div>`;
+  }
+  function cutResultHTML() {
+    const c = st.cutInfo;
+    if (!c) return '';
+    const mine = c.pi === ME;
+    return `<h2>${c.hit ? '🎉 ' + esc(t('cut_hit_title')) : '✂️ ' + esc(t('cut_miss_title'))}</h2>
+      <div class="cutres ${c.hit ? 'hit' : ''}"><b>${c.left}</b><span>${esc(t('cut_left_of', { n: c.target }))}</span></div>
+      <p>${esc(c.hit ? t(mine ? 'cut_hit_me' : 'cut_hit_other', { name: nameOf(c.pi), bonus: E.RULES.cutBonus }) : t(mine ? 'cut_miss_me' : 'cut_miss_other', { name: nameOf(c.pi), n: c.left, target: c.target }))}</p>
+      <div class="stackbtns"><button class="btn primary" data-act="close">${esc(t('cut_play'))}</button></div>`;
+  }
+  // ukazatel na balíčku: prstem nebo myší vybrat, kde sejmout
+  function cutPointer(ev) {
+    const el = document.getElementById('cutDeck');
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const frac = Math.max(0, Math.min(1, (r.bottom - ev.clientY) / r.height));
+    const total = deckTotal();
+    cutAim = Math.max(1, Math.min(total - 1, Math.round(frac * total)));
+    renderOverlay();
+  }
+  let cutting = false;
+  document.addEventListener('pointerdown', (ev) => { if (ev.target.closest && ev.target.closest('#cutDeck')) { cutting = true; cutPointer(ev); ev.preventDefault(); } });
+  document.addEventListener('pointermove', (ev) => { if (cutting) { cutPointer(ev); ev.preventDefault(); } }, { passive: false });
+  document.addEventListener('pointerup', () => { cutting = false; });
+  document.addEventListener('pointercancel', () => { cutting = false; });
 
   // ---------- obrázky hráčů ----------
   function avColor(id) {
@@ -925,7 +985,7 @@
   }
 
   // ---------- výuka ----------
-  const TUT_SLIDES = 5;
+  const TUT_SLIDES = 6;
   function tutIntroHTML() {
     const i = Math.max(0, Math.min(TUT_SLIDES - 1, tut.slide));
     const last = i === TUT_SLIDES - 1;
@@ -944,7 +1004,12 @@
     const lab = (ids) => ids.map((id) => myHand().find((c) => c.id === id)).filter(Boolean).map(cardLabel).join(' ');
     if (st.phase === 'roundOver') return { text: t('coach_round') };
     if (st.phase === 'gameOver') return { text: t('coach_over'), act: 'tostart', label: t('main_menu') };
+    if (st.phase === 'cut') return myTurn() ? { text: t('coach_cut', { n: E.RULES.handSize * st.players.length, bonus: E.RULES.cutBonus }) } : { text: t('coach_wait', { name: nameOf(st.current) }) };
     if (!myTurn()) return { text: t('coach_wait', { name: nameOf(st.current) }) };
+    if (canRedrawNow()) {
+      const c = myHand().find((x) => x.id === st.turn.drawnId);
+      if (c) return { text: t(B.cardFits(myHand(), c) ? 'coach_redraw_keep' : 'coach_redraw', { card: cardLabel(c) }), ids: [c.id], label: t('show_me') };
+    }
     const team = st.teams[US()];
     const openNote = E.needsOpen(team) ? ' ' + t('coach_open', { min: E.RULES.openMin, v: st.turn.laid || 0 }) : '';
     if (st.phase === 'draw') {
@@ -1036,6 +1101,8 @@
     else if (overlay === 'avatar' && net.user) html = avatarPageHTML();
     else if (overlay === 'privacy') html = privacyHTML();
     else if (overlay === 'tutintro') html = tutIntroHTML();
+    else if (overlay === 'cut') html = st.phase === 'cut' && myTurn() ? cutHTML() : (overlay = null, '');
+    else if (overlay === 'cutres') html = cutResultHTML();
     else if (overlay === 'solo') html = soloHTML();
     else if (overlay === 'multi' && net.user) html = multiHTML();
     const full = `<div class="sheet" role="dialog" aria-modal="true">${html}</div>`;
@@ -1083,6 +1150,28 @@
     soundEvents();
     tickTimers();
     playAnim(animSnap);
+    cutFlow();
+  }
+  // když jsem na řadě se sejmutím, otevře se okno; po sejmutí se ukáže výsledek
+  function cutFlow() {
+    if (!st || (online() && net.view && net.view.status !== 'playing')) return;
+    if (st.phase === 'cut') {
+      cutShown = null;
+      if (myTurn() && !overlay && !cutAuto) { cutAuto = true; overlay = 'cut'; renderOverlay(); }
+      return;
+    }
+    cutAuto = false;
+    const c = st.cutInfo;
+    const fresh = st.log.slice(-8).some((m) => m && (m.k === 'log_cut' || m.k === 'log_cut_hit'));
+    if (c && fresh && c.round === st.round && cutShown !== st.round && (st.phase === 'draw' || st.phase === 'play')) {
+      cutShown = st.round;
+      if (c.pi === ME) {
+        if (!overlay) { overlay = 'cutres'; renderOverlay(); }
+      } else {
+        toast(c.hit ? t('cut_hit_other', { name: nameOf(c.pi), bonus: E.RULES.cutBonus }) : t('cut_miss_other', { name: nameOf(c.pi), n: c.left, target: c.target }), c.hit ? 'info' : undefined);
+      }
+      if (c.hit) S.sfx('win');
+    }
   }
 
   // ---------- pohyb karet ----------
@@ -1170,6 +1259,13 @@
       const topEl = pileEl.querySelector('.card');
       const from = snap.hand.get(now.top) || seatRect(pi);
       if (topEl) fly(topEl.outerHTML.replace(/ data-cid="\d+"/, ''), from, topEl.getBoundingClientRect(), 0, topEl);
+    } else if (L.k === 'log_redraw') {
+      // odmítnutá karta letí na hromádku, nová z balíčku do ruky
+      const topEl = pileEl && pileEl.querySelector('.card');
+      const from = snap.hand.get(now.top) || seatRect(pi);
+      if (topEl) fly(topEl.outerHTML.replace(/ data-cid="\d+"/, ''), from, topEl.getBoundingClientRect(), 0, topEl);
+      if (pi === ME) newInHand.forEach((id, i) => { const e = handEl(id); if (e) fly(backFace(), stockR, rectOf(e.querySelector('.card')), 260 + 90 * i, e); });
+      else fly(backFace(), stockR, seatRect(pi), 260, null);
     } else if (L.k === 'log_draw' || L.k === 'log_draw_red') {
       if (pi === ME) {
         newInHand.forEach((id, i) => { const e = handEl(id); if (e) fly(backFace(), stockR, rectOf(e.querySelector('.card')), 90 * i, e); });
@@ -1222,7 +1318,7 @@
     else if (sig.melds > prev.melds && sig.round === prev.round) S.sfx('meld');
     else if (sig.log !== prev.log && last) {
       if (last.k === 'log_discard') S.sfx('card');
-      else if (last.k === 'log_draw' || last.k === 'log_draw_red' || last.k === 'log_take_pile') S.sfx('draw');
+      else if (last.k === 'log_draw' || last.k === 'log_draw_red' || last.k === 'log_take_pile' || last.k === 'log_redraw') S.sfx('draw');
     }
     if (online() && sig.mine && !prev.mine) {
       setTimeout(() => S.sfx('turn'), 180);
@@ -1602,8 +1698,8 @@
   function schedule() {
     clearTimeout(botTimer);
     if (!st || overlay || online()) return;
-    if ((st.phase === 'draw' || st.phase === 'play') && st.players[st.current].isBot) {
-      const base = st.phase === 'draw' ? 1100 : 1300; // pomaleji, ať je vidět, jak karty jezdí
+    if ((st.phase === 'draw' || st.phase === 'play' || st.phase === 'cut') && st.players[st.current].isBot) {
+      const base = st.phase === 'draw' ? 1100 : st.phase === 'cut' ? 1500 : 1300; // pomaleji, ať je vidět, jak karty jezdí
       botTimer = setTimeout(botTick, base);
     }
   }
@@ -1801,6 +1897,22 @@
       case 'pushon': enablePush(); return;
       case 'pushtoggle': if (v === '1') enablePush(); else disablePush(); return;
       case 'tutorial': tut.slide = 0; openPage('tutintro'); break;
+      case 'opencut': if (st.phase === 'cut' && myTurn()) overlay = 'cut'; break;
+      case 'cutgo': {
+        if (st.phase !== 'cut' || !myTurn() || cutAim == null) return;
+        const aim = cutAim;
+        cutAim = null;
+        cutShown = null;
+        if (online()) { remote({ type: 'cut', aim }); overlay = null; return; }
+        r = E.cutDeck(st, ME, aim);
+        overlay = null;
+        break;
+      }
+      case 'redraw':
+        if (!canRedrawNow()) return;
+        sel.clear();
+        r = online() ? remote({ type: 'redraw' }) : E.redraw(st, ME);
+        break;
       case 'tutnext': tut.slide++; break;
       case 'tutprev': tut.slide = Math.max(0, tut.slide - 1); break;
       case 'tutstart':

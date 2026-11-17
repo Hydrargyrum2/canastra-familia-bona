@@ -681,6 +681,38 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
 #myMelds.droptarget { outline-style: dashed; }
 .drag-ghost[data-n]::after { content: attr(data-n); position: absolute; top: -8px; right: -8px; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 11px; background: var(--brass); color: var(--ink); font: 800 13px/22px system-ui, sans-serif; text-align: center; }
 
+/* sejmutí balíčku: balíček z boku, každá linka je jedna karta */
+.cutwrap { display: flex; justify-content: center; gap: 12px; margin: 14px 0 8px; }
+.cutdeck, .cuttop {
+  background-color: #e9dfc8;
+  background-image: linear-gradient(to top, #f6efdc 0 62%, #b5a685 62% 100%);
+  background-size: 100% calc(100% / var(--lines));
+  background-position: left bottom;
+}
+.cutdeck {
+  position: relative; width: 150px; height: min(44vh, 300px);
+  border-radius: 7px; cursor: ns-resize; touch-action: none; user-select: none;
+  box-shadow: 0 10px 24px rgba(0,0,0,.45), inset 0 0 0 1px rgba(0,0,0,.25);
+}
+.cutdeck::after { /* hřbet balíčku vlevo, ať je vidět, že jde o karty */
+  content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 10px; border-radius: 7px 0 0 7px;
+  background: linear-gradient(90deg, #8a1f2b, #b8323c); opacity: .85;
+}
+.cuttop {
+  position: absolute; left: 0; right: 0; top: 0; border-radius: 7px 7px 3px 3px;
+  transform: translate(16px, -10px) rotate(-2deg); transform-origin: left bottom;
+  box-shadow: 0 8px 14px rgba(0,0,0,.4), inset 0 0 0 1px rgba(0,0,0,.25);
+  pointer-events: none; z-index: 1;
+}
+.cutline { position: absolute; left: -10px; right: -10px; height: 0; border-top: 2px dashed var(--brass); pointer-events: none; z-index: 2; }
+.cutside { display: flex; flex-direction: column; font-size: 12px; color: var(--muted); padding: 2px 0; }
+.cutside .grow { flex: 1; }
+.cutres { display: flex; flex-direction: column; align-items: center; margin: 10px 0 6px; }
+.cutres b { font-family: var(--font-display); font-size: 56px; line-height: 1; color: var(--ivory); }
+.cutres.hit b { color: var(--brass); text-shadow: 0 0 18px rgba(241,195,76,.55); }
+.cutres span { color: var(--muted); font-size: 13px; margin-top: 4px; }
+.btn.redraw { flex: 0 0 auto; }
+
 </style>
 </head>
 <body>
@@ -720,7 +752,7 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
   const ORDER = ['4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A']; // 4 nejnižší, eso nejvyšší
   const SET_RANKS = ['K', 'A', '4'];
   const M = (k, p) => ({ k, p: p || {} }); // zpráva pro překlad: klíč + parametry
-  const RULES = { target: 4000, openThreshold: 2000, openMin: 150, handSize: 13, canasta: 7 };
+  const RULES = { target: 4000, openThreshold: 2000, openMin: 150, handSize: 13, canasta: 7, cutBonus: 100, cutJitter: 2 };
 
   // ---------- karty ----------
   function makeDeck() {
@@ -882,14 +914,21 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
   }
 
   // ---------- stav hry ----------
-  function newGame(players) {
+  // opts.family: rodinná pravidla – los, kdo začne první kolo; sejmutí balíčku před každým
+  // kolem (+100 za přesný počet); začínající hráč smí jednou vyměnit první líznutou kartu.
+  function newGame(players, opts) {
+    const family = !!(opts && opts.family);
+    const n = players.length;
+    const rng = (opts && opts.rng) || Math.random;
     return {
+      family,
       players: players.map((p, i) => ({ name: p.name, isBot: !!p.isBot, hand: [], team: i % 2 })),
       teams: [0, 1].map(() => ({ score: 0, melds: [], red3: [], opened: false, needOpen: false })),
       stock: [],
       pile: [],
       current: 0,
-      dealer: players.length - 1,
+      // startRound posune rozdávajícího o jedno; začíná hráč po něm
+      dealer: family ? Math.floor(rng() * n) : players.length - 1,
       phase: 'new',
       round: 0,
       turn: null,
@@ -922,6 +961,20 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
       t.needOpen = t.score >= RULES.openThreshold;
     }
     for (const p of st.players) p.hand = [];
+    st.cutInfo = null;
+    st.current = (st.dealer + 1) % n;
+    if (st.family) {
+      // před rozdáním snímá balíček ten, kdo kolo začíná
+      st.phase = 'cut';
+      st.turn = null;
+      log(st, M('log_cut_wait', { pi: st.current }));
+      return;
+    }
+    dealRound(st);
+  }
+
+  function dealRound(st) {
+    const n = st.players.length;
     for (let k = 0; k < RULES.handSize; k++) {
       for (let i = 1; i <= n; i++) st.players[(st.dealer + i) % n].hand.push(st.stock.pop());
     }
@@ -932,6 +985,52 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
     st.current = (st.dealer + 1) % n;
     log(st, M('log_round_start', { round: st.round, pi: st.current }));
     beginTurn(st);
+    if (st.family) st.turn.canRedraw = true;
+  }
+
+  // Sejmutí balíčku: hráč ukáže, kolik karet má zůstat dole (aim); ruka se trochu „zachvěje“.
+  // Když dole zbude přesně tolik, kolik se rozdává (13 × počet hráčů), dostane jeho tým +100.
+  function cutDeck(st, pi, aim, rng) {
+    if (st.phase !== 'cut' || st.current !== pi) return fail(M('not_your_turn'));
+    rng = rng || Math.random;
+    const total = st.stock.length;
+    const target = RULES.handSize * st.players.length;
+    let a = Math.round(Number(aim));
+    if (!Number.isFinite(a)) a = target;
+    a = Math.max(1, Math.min(total - 1, a));
+    const j = RULES.cutJitter;
+    const left = Math.max(1, Math.min(total - 1, a + Math.floor(rng() * (2 * j + 1)) - j));
+    const hit = left === target;
+    const team = st.players[pi].team;
+    if (hit) st.teams[team].score += RULES.cutBonus;
+    st.cutInfo = { pi, team, left, target, hit, total, round: st.round };
+    log(st, M(hit ? 'log_cut_hit' : 'log_cut', { pi, left, target, bonus: RULES.cutBonus }));
+    dealRound(st);
+    return ok({ left, hit });
+  }
+
+  // Začínající hráč smí jednou za kolo, hned po prvním líznutí, líznutou kartu odložit na hromádku
+  // a líznout si jinou (dokud nic nevyložil).
+  function canRedraw(st, pi) {
+    const t = st.turn;
+    if (!t || !t.canRedraw || st.phase !== 'play' || st.current !== pi || t.from !== 'stock' || t.laid) return false;
+    return !!st.stock.length && st.players[pi].hand.some((c) => c.id === t.drawnId);
+  }
+  function redraw(st, pi) {
+    if (!canRedraw(st, pi)) return fail(M('cant_redraw'));
+    const p = st.players[pi];
+    const idx = p.hand.findIndex((c) => c.id === st.turn.drawnId);
+    const old = p.hand.splice(idx, 1)[0];
+    st.pile.push(old);
+    st.turn.canRedraw = false;
+    const before = new Set(p.hand.map((x) => x.id));
+    p.hand.push(st.stock.pop());
+    const red = layRed3s(st, pi);
+    st.turn.newIds = p.hand.filter((x) => !before.has(x.id)).map((x) => x.id);
+    st.turn.drawnId = p.hand.length ? p.hand[p.hand.length - 1].id : null;
+    st.turn.snap = snapshot(st);
+    log(st, M('log_redraw', { pi, card: { r: old.r, s: old.s }, red }));
+    return ok({ red3: red });
   }
 
   function layRed3s(st, pi) {
@@ -1040,6 +1139,7 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
     p.hand.push(c);
     const red = layRed3s(st, pi);
     st.turn.newIds = p.hand.filter((x) => !before.has(x.id)).map((x) => x.id);
+    st.turn.drawnId = p.hand.length ? p.hand[p.hand.length - 1].id : null;
     st.turn.from = 'stock';
     st.phase = 'play';
     st.turn.snap = snapshot(st);
@@ -1286,10 +1386,12 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
       if (closer === ti) {
         for (const p of st.players) if (p.team !== ti) for (const c of p.hand) capturePts += captureValue(c);
       }
-      const total = cardsPts + canastaPts + red3Pts + capturePts;
-      return { cardsPts, canastaPts, canastas, red3: t.red3.length, red3Pts, capturePts, total };
+      const cutPts = st.cutInfo && st.cutInfo.hit && st.cutInfo.team === ti && st.cutInfo.round === st.round ? RULES.cutBonus : 0;
+      const total = cardsPts + canastaPts + red3Pts + capturePts + cutPts;
+      return { cardsPts, canastaPts, canastas, red3: t.red3.length, red3Pts, capturePts, cutPts, total };
     });
-    res.forEach((r, i) => { st.teams[i].score += r.total; });
+    // body za sejmutí se připsaly hned na začátku kola
+    res.forEach((r, i) => { st.teams[i].score += r.total - r.cutPts; });
     st.lastRound = { closer, teams: res };
     st.phase = 'roundOver';
     const scores = st.teams.map((t) => t.score);
@@ -1321,7 +1423,7 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
     makeDeck, shuffle, isWild, isThree, isRed3, isBlack3, blocksPile, pos, cardValue, captureValue, sumValue,
     layoutSeq, analyzeNewMeld, analyzeAdd, isCanasta, isClean, hasCanasta, meldOrder, needsOpen,
     newGame, startRound, pileError, checkTakePile, drawStock, takePile, passEnd, checkMeldNew, meldNew, checkAdd, addToMeld,
-    discardError, discard, undoTurn, cardName, totalCards,
+    discardError, discard, undoTurn, cardName, totalCards, cutDeck, canRedraw, redraw, analyzePileAdd,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.Engine = api;
@@ -1703,9 +1805,28 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
   }
 
   // ---------- jeden krok robota ----------
+  // Hodí se líznutá karta k ruce? (žolík, stejná hodnota, nebo stejná barva do dvou míst)
+  function cardFits(hand, c) {
+    if (E.isWild(c)) return true;
+    if (E.isThree(c)) return E.isBlack3(c); // černá trojka se hodí na blokování
+    return hand.some((x) => x.id !== c.id && !E.isWild(x) && !E.isThree(x) &&
+      (x.r === c.r || (x.s === c.s && Math.abs(E.pos(x) - E.pos(c)) <= 2)));
+  }
   function step(st, pi, level) {
     LV = level === 'easy' || level === 'medium' ? level : 'hard';
     if (st.current !== pi) return { ok: false, error: E.M('not_your_turn') };
+    if (st.phase === 'cut') {
+      // zkušený robot míří přesně, slabší se trochu splete; karty se pak ještě svezou (engine)
+      const target = E.RULES.handSize * st.players.length;
+      const miss = LV === 'hard' ? 0 : LV === 'medium' ? 3 : 5;
+      return E.cutDeck(st, pi, target + Math.floor(Math.random() * (2 * miss + 1)) - miss);
+    }
+    if (st.phase === 'play' && E.canRedraw && E.canRedraw(st, pi)) {
+      const hand = st.players[pi].hand;
+      const c = hand.find((x) => x.id === st.turn.drawnId);
+      if (c && !cardFits(hand, c)) return E.redraw(st, pi);
+      st.turn.canRedraw = false; // nechává si ji
+    }
     if (st.phase === 'draw') {
       const choice = wantsPile(st, pi);
       if (choice) {
@@ -1736,7 +1857,7 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
   // Zpětná kompatibilita: „hladová“ akce (používají ji testy).
   const greedyAction = (st, pi) => pickAction(st, pi, 'all');
 
-  const api = { step, candidateMelds, greedyAction, discardOrder, wantsPile, pileChoice, dangerLevel, chooseMode, TUNE };
+  const api = { step, candidateMelds, greedyAction, discardOrder, wantsPile, pileChoice, dangerLevel, chooseMode, cardFits, TUNE };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.Bot = api;
 })(typeof window !== 'undefined' ? window : globalThis);
@@ -1979,6 +2100,44 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
     app_windows: "Klikni na ikonu instalace vpravo v adresním řádku. Případně v nabídce prohlížeče najdi „Aplikace“ nebo „Uložit a sdílet“ a zvol instalaci.",
     app_iphone_t: "iPhone a iPad (Safari)",
     app_installed_toast: "Hotovo, aplikace je nainstalovaná.",
+    log_cut_wait: "{name} snímá balíček.",
+    log_cut_wait_you: "Začínáš kolo. Sejmi balíček.",
+    log_cut: "{name} snímá balíček. Dole zůstalo {left}, potřeba bylo {target}.",
+    log_cut_you: "Snímáš balíček. Dole zůstalo {left}, potřeba bylo {target}.",
+    log_cut_hit: "{name} snímá přesně {target}! Tým získává +{bonus} bodů.",
+    log_cut_hit_you: "Snímáš přesně {target}! Tvůj tým získává +{bonus} bodů.",
+    log_redraw: "{name} vrací líznutou kartu {card} na hromádku a líže si jinou.",
+    log_redraw_you: "Vracíš {card} na hromádku a lížeš si jinou.",
+    cant_redraw: "Kartu teď vyměnit nejde. Jde to jen hned po prvním líznutí v kole.",
+    cut_btn: "Sejmout balíček",
+    cut_wait: "{name} snímá balíček",
+    cut_hint_me: "Začínáš kolo. Sejmi balíček tak, ať dole zůstane přesně {n} karet.",
+    cut_title: "Sejmutí balíčku",
+    cut_lead: "Klepni nebo táhni prstem tam, kde chceš balíček rozdělit. Když dole zůstane přesně {n} karet, tvůj tým dostane +{bonus} bodů. Karty se při snímání trochu svezou, takže přesný zásah je vzácnost.",
+    cut_top: "vršek",
+    cut_bottom: "spodek",
+    cut_tap: "Klepni do balíčku tam, kde ho chceš sejmout.",
+    cut_ready: "Místo můžeš ještě posunout. Pak stiskni Sejmout.",
+    cut_go: "Sejmout",
+    cut_hit_title: "Přesně!",
+    cut_miss_title: "Sejmuto",
+    cut_left_of: "zůstalo dole · potřeba {n}",
+    cut_hit_me: "Dole zůstalo přesně tolik, kolik se rozdává. Tvůj tým má +{bonus} bodů.",
+    cut_hit_other: "{name} snímá přesně! +{bonus} bodů pro tým.",
+    cut_miss_me: "Dole zůstalo {n}, potřeba bylo {target}. Tentokrát bez bodů.",
+    cut_miss_other: "{name} snímá. Dole zůstalo {n}, potřeba bylo {target}.",
+    cut_play: "Hrát",
+    redraw_btn: "Vyměnit kartu",
+    redraw_hint: "Vrátit líznutou kartu na hromádku a líznout si jinou. Jde to jen teď.",
+    redraw_status: "Začínáš kolo: líznutou kartu můžeš jednou vyměnit, nebo rovnou hrát.",
+    row_cut: "Za sejmutí",
+    coach_cut: "Na začátku kola snímáš balíček. Zkus ho rozdělit tak, aby dole zůstalo {n} karet. Přesný zásah dá +{bonus} bodů.",
+    coach_redraw: "Líznutá karta {card} se ti moc nehodí. Můžeš ji jednou vyměnit tlačítkem 🔄 Vyměnit kartu.",
+    coach_redraw_keep: "Líznutá karta {card} se ti hodí, nech si ji. Vyměnit by šla jen teď, pak už ne.",
+    tut_s5_t: "Začátek kola",
+    tut_s5: "Kdo kolo začíná, nejdřív sejme balíček. Když dole zůstane přesně tolik karet, kolik se rozdává (26, ve čtyřech 52), jeho tým dostane 100 bodů. Pak smí jednou vrátit první líznutou kartu na hromádku a líznout si jinou. Kdo začíná, se každé kolo střídá.",
+    tut_s6_t: "Konec kola",
+    tut_s6: "Kolo zavřeš, když ti nezůstane žádná karta a máš aspoň jednu canastu. Kdo zavře, dostane i body za karty, které zůstaly soupeři v ruce. Teď si to zkus proti lehkému robotovi, nápověda ti poradí každý tah.",
     pile_add_alone: "K vykládce na stole smíš z hromádky přiložit jen samotnou vrchní kartu, z ruky k ní nic. Zruš výběr karet a klepni na vykládku.",
     tut_s3: "Na začátku tahu si lízneš kartu z balíčku, nebo vezmeš celou hromádku. Hromádku můžeš vzít jen tehdy, když její vrchní kartu hned vyložíš s kartami z ruky, nebo ji samotnou přiložíš ke své vykládce. Pak vykládáš a nakonec jednu kartu odhodíš.",
     app_iphone: "Otevři hru v Safari (ne uvnitř WhatsAppu, Instagramu apod.). Klepni na ⋯ vedle adresy (u starších iOS na tlačítko Sdílet dole), pak Sdílet, sjeď dolů na „Přidat na plochu“, nech zapnuté „Otevřít jako webovou aplikaci“ a klepni na Přidat.",
@@ -2106,8 +2265,6 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
     tut_s3_t: "Tah",
     tut_s4_t: "Na co si dát pozor",
     tut_s4: "Odhozená černá trojka, dvojka nebo joker hromádku zablokuje. Červené trojky se vyloží samy a dolízneš si za ně. Když máš nad 2 000 bodů, první vykládka v kole musí mít aspoň 150 bodů.",
-    tut_s5_t: "Konec kola",
-    tut_s5: "Kolo zavřeš, když ti nezůstane žádná karta a máš aspoň jednu canastu. Kdo zavře, dostane i body za karty, které zůstaly soupeři v ruce. Teď si to zkus proti lehkému robotovi, nápověda ti poradí každý tah.",
     coach_draw: "Lízni si kartu z balíčku.",
     coach_no_pile: "Hromádku teď vzít nejde: {why}",
     coach_pile: "Vrchní kartu z hromádky ({card}) můžeš hned vyložit, a tím si vzít celou hromádku. Klepni na Ukaž mi a pak na Vzít hromádku.",
@@ -2188,6 +2345,12 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
         <li>Červené trojky se samy vyloží a dolízne se za ně karta.</li>
         <li>Zavřeš, když ti nezůstane žádná karta a máš aspoň jednu canastu.</li>
         <li>Když dojde balíček, další hráč si zahraje už jen s hromádkou. Karty v ruce pak propadají.</li>
+      </ul>
+      <h3>Začátek kola</h3>
+      <ul>
+        <li>V prvním kole rozhodne los, kdo začíná. Pak se začínající hráč každé kolo střídá (ve čtyřech jde dál po kruhu).</li>
+        <li>Začínající hráč sejme balíček. Když dole zůstane přesně 26 karet (ve čtyřech 52), jeho tým hned dostane 100 bodů. Pak se rozdá po 13 kartách.</li>
+        <li>Začínající hráč smí jednou za kolo, hned po prvním líznutí, vrátit líznutou kartu na hromádku a líznout si jinou. Jen dokud nic nevyložil. Pak hraje normálně a tah končí odhozením.</li>
       </ul>
       <h3>Body</h3>
       <ul>
@@ -2425,6 +2588,44 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
     app_windows: "Click the install icon on the right of the address bar. Or look for “Apps” or “Save and share” in the browser menu and choose install.",
     app_iphone_t: "iPhone and iPad (Safari)",
     app_installed_toast: "Done, the app is installed.",
+    log_cut_wait: "{name} is cutting the deck.",
+    log_cut_wait_you: "You start this round. Cut the deck.",
+    log_cut: "{name} cuts the deck. {left} left at the bottom, {target} needed.",
+    log_cut_you: "You cut the deck. {left} left at the bottom, {target} needed.",
+    log_cut_hit: "{name} cuts exactly {target}! Their team gets +{bonus} points.",
+    log_cut_hit_you: "You cut exactly {target}! Your team gets +{bonus} points.",
+    log_redraw: "{name} puts the drawn {card} on the pile and draws another card.",
+    log_redraw_you: "You put {card} on the pile and draw another card.",
+    cant_redraw: "You can't swap the card now. It's only allowed right after the first draw of the round.",
+    cut_btn: "Cut the deck",
+    cut_wait: "{name} is cutting the deck",
+    cut_hint_me: "You start this round. Cut the deck so exactly {n} cards stay at the bottom.",
+    cut_title: "Cut the deck",
+    cut_lead: "Tap or drag where you want to split the deck. If exactly {n} cards stay at the bottom, your team gets +{bonus} points. The cards slip a little when you cut, so an exact hit is rare.",
+    cut_top: "top",
+    cut_bottom: "bottom",
+    cut_tap: "Tap the deck where you want to cut it.",
+    cut_ready: "You can still move it. Then press Cut.",
+    cut_go: "Cut",
+    cut_hit_title: "Exactly!",
+    cut_miss_title: "Deck cut",
+    cut_left_of: "left at the bottom · {n} needed",
+    cut_hit_me: "Exactly as many cards as are dealt stayed at the bottom. Your team gets +{bonus} points.",
+    cut_hit_other: "{name} cut exactly! +{bonus} points for their team.",
+    cut_miss_me: "{n} stayed at the bottom, {target} were needed. No points this time.",
+    cut_miss_other: "{name} cut the deck. {n} stayed at the bottom, {target} were needed.",
+    cut_play: "Play",
+    redraw_btn: "Swap card",
+    redraw_hint: "Put the drawn card on the pile and draw another. Only allowed now.",
+    redraw_status: "You start this round: you may swap the drawn card once, or just play.",
+    row_cut: "Deck cut",
+    coach_cut: "At the start of the round you cut the deck. Try to split it so {n} cards stay at the bottom. An exact hit is worth +{bonus} points.",
+    coach_redraw: "The {card} you drew doesn't help you much. You can swap it once with 🔄 Swap card.",
+    coach_redraw_keep: "The {card} you drew fits your hand, keep it. You could only swap it now.",
+    tut_s5_t: "Starting a round",
+    tut_s5: "Whoever starts the round first cuts the deck. If exactly as many cards as are dealt stay at the bottom (26, or 52 with four players), their team gets 100 points. Then they may once put their first drawn card on the pile and draw another. The starting player changes every round.",
+    tut_s6_t: "Ending a round",
+    tut_s6: "You go out when you have no cards left and at least one canasta. Whoever goes out also scores the cards left in the opponent's hand. Now try it against an easy bot, the tips will help you every turn.",
     pile_add_alone: "When adding to a meld on the table, you may only add the top card of the pile by itself, nothing from your hand. Clear your selection and tap the meld.",
     tut_s3: "Start your turn by drawing from the stock or taking the whole discard pile. You can only take the pile if you immediately meld its top card with cards from your hand, or add the top card alone to one of your melds. Then meld what you want and finally discard one card.",
     app_iphone: "Open the game in Safari (not inside WhatsApp, Instagram etc.). Tap ⋯ next to the address (on older iOS the Share button at the bottom), then Share, scroll down to “Add to Home Screen”, keep “Open as Web App” on and tap Add.",
@@ -2552,8 +2753,6 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
     tut_s3_t: "Your turn",
     tut_s4_t: "Watch out",
     tut_s4: "A discarded black three, two or joker blocks the pile. Red threes are laid down automatically and you draw a replacement. Above 2,000 points, your first meld in a round must be worth at least 150.",
-    tut_s5_t: "Ending a round",
-    tut_s5: "You go out when you have no cards left and at least one canasta. Whoever goes out also scores the cards left in the opponent's hand. Now try it against an easy bot, the tips will help you every turn.",
     coach_draw: "Draw a card from the stock.",
     coach_no_pile: "You can't take the pile right now: {why}",
     coach_pile: "You can meld the top card of the pile ({card}) right away and take the whole pile. Tap Show me and then Take pile.",
@@ -2634,6 +2833,12 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
         <li>Red threes are laid down automatically and replaced with a new card.</li>
         <li>You go out when you have no cards left and at least one canasta.</li>
         <li>When the stock runs out, the next player may still play by taking the pile. Cards left in hand are then lost.</li>
+      </ul>
+      <h3>Starting a round</h3>
+      <ul>
+        <li>In the first round a coin toss decides who starts. After that the starting player changes every round (with four players it moves around the table).</li>
+        <li>The starting player cuts the deck. If exactly 26 cards stay at the bottom (52 with four players), their team gets 100 points straight away. Then 13 cards are dealt to each player.</li>
+        <li>Once per round, right after the first draw, the starting player may put the drawn card on the discard pile and draw another, as long as nothing has been melded yet. The turn then goes on as usual and ends with a discard.</li>
       </ul>
       <h3>Scoring</h3>
       <ul>
@@ -2871,6 +3076,44 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
     app_windows: "Clique no ícone de instalação à direita da barra de endereço. Ou procure “Apps” ou “Salvar e compartilhar” no menu do navegador e escolha instalar.",
     app_iphone_t: "iPhone e iPad (Safari)",
     app_installed_toast: "Pronto, o aplicativo está instalado.",
+    log_cut_wait: "{name} está cortando o baralho.",
+    log_cut_wait_you: "Você começa esta rodada. Corte o baralho.",
+    log_cut: "{name} corta o baralho. Ficaram {left} embaixo, eram precisas {target}.",
+    log_cut_you: "Você corta o baralho. Ficaram {left} embaixo, eram precisas {target}.",
+    log_cut_hit: "{name} corta exatamente {target}! A dupla ganha +{bonus} pontos.",
+    log_cut_hit_you: "Você corta exatamente {target}! Sua dupla ganha +{bonus} pontos.",
+    log_redraw: "{name} põe a carta comprada {card} no lixo e compra outra.",
+    log_redraw_you: "Você põe {card} no lixo e compra outra carta.",
+    cant_redraw: "Agora não dá para trocar a carta. Só logo depois da primeira compra da rodada.",
+    cut_btn: "Cortar o baralho",
+    cut_wait: "{name} está cortando o baralho",
+    cut_hint_me: "Você começa esta rodada. Corte o baralho para ficarem exatamente {n} cartas embaixo.",
+    cut_title: "Cortar o baralho",
+    cut_lead: "Toque ou arraste onde quer dividir o baralho. Se ficarem exatamente {n} cartas embaixo, sua dupla ganha +{bonus} pontos. As cartas escorregam um pouco no corte, então acertar em cheio é raro.",
+    cut_top: "em cima",
+    cut_bottom: "embaixo",
+    cut_tap: "Toque no baralho onde quer cortar.",
+    cut_ready: "Ainda dá para mudar. Depois toque em Cortar.",
+    cut_go: "Cortar",
+    cut_hit_title: "Na mosca!",
+    cut_miss_title: "Baralho cortado",
+    cut_left_of: "ficaram embaixo · precisava {n}",
+    cut_hit_me: "Ficaram embaixo exatamente as cartas que se distribuem. Sua dupla ganha +{bonus} pontos.",
+    cut_hit_other: "{name} cortou na mosca! +{bonus} pontos para a dupla.",
+    cut_miss_me: "Ficaram {n} embaixo, eram precisas {target}. Desta vez sem pontos.",
+    cut_miss_other: "{name} cortou o baralho. Ficaram {n} embaixo, eram precisas {target}.",
+    cut_play: "Jogar",
+    redraw_btn: "Trocar carta",
+    redraw_hint: "Pôr a carta comprada no lixo e comprar outra. Só agora.",
+    redraw_status: "Você começa a rodada: pode trocar a carta comprada uma vez, ou jogar direto.",
+    row_cut: "Corte",
+    coach_cut: "No começo da rodada você corta o baralho. Tente dividir para ficarem {n} cartas embaixo. Acertar em cheio vale +{bonus} pontos.",
+    coach_redraw: "A carta {card} que você comprou não ajuda muito. Você pode trocá-la uma vez com 🔄 Trocar carta.",
+    coach_redraw_keep: "A carta {card} que você comprou serve, fique com ela. Só daria para trocar agora.",
+    tut_s5_t: "Começo da rodada",
+    tut_s5: "Quem começa a rodada primeiro corta o baralho. Se ficarem embaixo exatamente as cartas que se distribuem (26, ou 52 com quatro jogadores), a dupla ganha 100 pontos. Depois pode, uma vez, pôr a primeira carta comprada no lixo e comprar outra. Quem começa muda a cada rodada.",
+    tut_s6_t: "Fim da rodada",
+    tut_s6: "Você bate quando fica sem cartas e tem pelo menos uma canastra. Quem bate ganha também os pontos das cartas que ficaram na mão do adversário. Agora experimente contra um robô fácil, as dicas vão ajudar em cada jogada.",
     pile_add_alone: "Para encaixar num jogo da mesa, só a carta de cima do lixo pode ir sozinha, nada da mão. Desmarque as cartas e toque no jogo.",
     tut_s3: "No começo da vez você compra do monte ou pega o lixo inteiro. Só dá para pegar o lixo se você baixar a carta de cima na hora com cartas da mão, ou encaixar só ela num jogo seu. Depois baixe o que quiser e, no fim, descarte uma carta.",
     app_iphone: "Abra o jogo no Safari (não dentro do WhatsApp, Instagram etc.). Toque em ⋯ ao lado do endereço (em iOS mais antigo, no botão Compartilhar embaixo), depois Compartilhar, role até “Adicionar à Tela de Início”, deixe “Abrir como app web” ligado e toque em Adicionar.",
@@ -2998,8 +3241,6 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
     tut_s3_t: "A jogada",
     tut_s4_t: "Atenção",
     tut_s4: "Um três preto, dois ou curinga descartado tranca o lixo. Os três vermelhos são baixados sozinhos e você compra outra carta no lugar. Acima de 2.000 pontos, o primeiro jogo da rodada precisa valer pelo menos 150.",
-    tut_s5_t: "Fim da rodada",
-    tut_s5: "Você bate quando fica sem cartas e tem pelo menos uma canastra. Quem bate ganha também os pontos das cartas que ficaram na mão do adversário. Agora experimente contra um robô fácil, as dicas vão ajudar em cada jogada.",
     coach_draw: "Compre uma carta do monte.",
     coach_no_pile: "Agora não dá para pegar o lixo: {why}",
     coach_pile: "Você pode baixar a carta de cima do lixo ({card}) agora e pegar o lixo inteiro. Toque em Mostrar e depois em Pegar o lixo.",
@@ -3080,6 +3321,12 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
         <li>Os três vermelhos são baixados automaticamente e você compra outra carta no lugar.</li>
         <li>Você bate quando fica sem cartas e tem pelo menos uma canastra.</li>
         <li>Quando o monte acaba, o próximo jogador só pode jogar pegando o lixo. As cartas na mão não contam.</li>
+      </ul>
+      <h3>Começo da rodada</h3>
+      <ul>
+        <li>Na primeira rodada um sorteio decide quem começa. Depois quem começa muda a cada rodada (com quatro jogadores passa ao próximo da mesa).</li>
+        <li>Quem começa corta o baralho. Se ficarem exatamente 26 cartas embaixo (52 com quatro jogadores), a dupla ganha 100 pontos na hora. Depois cada um recebe 13 cartas.</li>
+        <li>Uma vez por rodada, logo depois da primeira compra, quem começa pode pôr a carta comprada no lixo e comprar outra, desde que ainda não tenha baixado nada. Depois a jogada segue normal e termina com um descarte.</li>
       </ul>
       <h3>Pontos</h3>
       <ul>
@@ -3474,7 +3721,7 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
     const p = st.players.find((x) => x.team === ti);
     return p ? p.name : '';
   }
-  const myTurn = () => st && st.current === ME && (st.phase === 'draw' || st.phase === 'play') && (!online() || (net.view && net.view.me.seat === ME));
+  const myTurn = () => st && st.current === ME && (st.phase === 'draw' || st.phase === 'play' || st.phase === 'cut') && (!online() || (net.view && net.view.me.seat === ME));
 
   // ---------- hra proti robotům ----------
   function newMatch(m) {
@@ -3484,10 +3731,13 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
     const players = m === '2v2'
       ? [{ name: 'Ty' }, { name: 'Caio', isBot: true }, { name: 'Bia', isBot: true }, { name: 'Duda', isBot: true }]
       : [{ name: 'Ty' }, { name: 'Caio', isBot: true }];
-    st = E.newGame(players);
+    st = E.newGame(players, { family: true });
     E.startRound(st);
     sel.clear();
     botFails = 0;
+    cutAim = null;
+    cutAuto = false;
+    cutShown = null;
   }
   function save() {
     if (online()) return;
@@ -3625,6 +3875,8 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
     if (st.phase === 'waiting') hint = esc(t('room_waiting'));
     else if (st.phase === 'roundOver' || st.phase === 'gameOver') hint = esc(t('round_over_short'));
     else if (pausedFor() != null) hint = `<span class="paused">${esc(t('paused_wait', { name: nameOf(pausedFor()) }))}</span>`;
+    else if (st.phase === 'cut') hint = myTurn() ? esc(t('cut_hint_me', { n: E.RULES.handSize * st.players.length })) : `<span class="dots">${esc(t('cut_wait', { name: nameOf(st.current) }))}</span>`;
+    else if (myTurn() && canRedrawNow()) hint = esc(t('redraw_status'));
     else if (!myTurn()) hint = `<span class="dots">${esc(t('playing', { name: nameOf(st.current) }))}</span>`;
     else if (st.phase === 'draw') {
       const canPile = !E.pileError(st, ME);
@@ -3666,6 +3918,10 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
       return `<button class="btn primary" data-act="openround">${esc(t(st.phase === 'gameOver' ? 'btn_result_game' : 'btn_result_round'))}</button>`;
     }
     if (pausedFor() != null) return `<div class="wait"><span class="paused">⏸ ${esc(t('paused_short', { name: nameOf(pausedFor()) }))}</span></div>`;
+    if (st.phase === 'cut') {
+      return myTurn() ? `<button class="btn primary" data-act="opencut">✂️ ${esc(t('cut_btn'))}</button>`
+        : `<div class="wait"><span class="dots">${esc(t('cut_wait', { name: nameOf(st.current) }))}</span></div>`;
+    }
     if (!myTurn()) return `<div class="wait"><span class="dots">${esc(t('playing', { name: nameOf(st.current) }))}</span></div>`;
     if (st.phase === 'draw') {
       const pileErr = E.pileError(st, ME);
@@ -3677,7 +3933,8 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
         <button class="btn" data-act="pile">${esc(t('btn_take_pile'))}</button>`;
     }
     const canUndo = (st.turn.snap || st.turn.canUndo) && (st.turn.from === 'pile' || st.turn.laid > 0);
-    return `<button class="btn ${sel.size >= 3 ? 'primary' : ''}" data-act="meld" ${sel.size >= 3 ? '' : 'disabled'}>${esc(t('btn_meld'))}</button>
+    const redrawBtn = canRedrawNow() ? `<button class="btn redraw" data-act="redraw" title="${esc(t('redraw_hint'))}">🔄 ${esc(t('redraw_btn'))}</button>` : '';
+    return `${redrawBtn}<button class="btn ${sel.size >= 3 ? 'primary' : ''}" data-act="meld" ${sel.size >= 3 ? '' : 'disabled'}>${esc(t('btn_meld'))}</button>
       <button class="btn ${sel.size === 1 ? 'primary' : ''}" data-act="discard" ${sel.size === 1 ? '' : 'disabled'}>${esc(t('btn_discard'))}</button>
       <button class="btn" data-act="undo" ${canUndo ? '' : 'disabled'}>${esc(t('btn_undo'))}</button>`;
   }
@@ -3781,12 +4038,62 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
           ${row(t('row_canastas', { a: t0.canastas, b: t1.canastas }), fmt(t0.canastaPts), fmt(t1.canastaPts))}
           ${row(t('row_red3', { a: t0.red3, b: t1.red3 }), fmt(t0.red3Pts), fmt(t1.red3Pts))}
           ${row(t('row_capture'), fmt(t0.capturePts), fmt(t1.capturePts))}
+          ${(t0.cutPts || t1.cutPts) ? row(t('row_cut'), fmt(t0.cutPts || 0), fmt(t1.cutPts || 0)) : ''}
           ${row(t('row_round'), fmt(t0.total), fmt(t1.total), 'sum')}
           ${row(t('row_total'), fmt(st.teams[u].score), fmt(st.teams[th].score), 'tot')}
         </tbody>
       </table>
       <div class="stackbtns">${buttons}</div>`;
   }
+
+  // ---------- sejmutí balíčku a výměna první karty ----------
+  let cutAim = null; // kolik karet má podle hráče zůstat dole
+  let cutShown = null; // kolo, jehož výsledek sejmutí už hráč viděl
+  let cutAuto = false; // okno se sejmutím se samo otevřelo (podruhé už jen tlačítkem)
+  function canRedrawNow() {
+    if (!st || st.phase !== 'play' || !myTurn()) return false;
+    return online() ? !!(st.turn && st.turn.canRedraw) : E.canRedraw(st, ME);
+  }
+  const deckTotal = () => (st && st.stock ? st.stock.length : 108) || 108;
+  function cutHTML() {
+    const total = deckTotal();
+    const target = E.RULES.handSize * st.players.length;
+    const pct = cutAim == null ? null : (cutAim / total) * 100;
+    return `<h2>✂️ ${esc(t('cut_title'))}</h2>
+      <p>${esc(t('cut_lead', { n: target, bonus: E.RULES.cutBonus }))}</p>
+      <div class="cutwrap">
+        <div class="cutdeck" id="cutDeck" style="--lines:${total}" role="slider" aria-label="${esc(t('cut_title'))}" aria-valuemin="1" aria-valuemax="${total - 1}" ${cutAim == null ? '' : `aria-valuenow="${cutAim}"`}>
+          ${pct == null ? '' : `<div class="cuttop" style="bottom:${pct}%;--lines:${total - cutAim}"></div><div class="cutline" style="bottom:${pct}%"></div>`}
+        </div>
+        <div class="cutside"><span>${esc(t('cut_top'))}</span><span class="grow"></span><span>${esc(t('cut_bottom'))}</span></div>
+      </div>
+      <p class="seghint">${esc(t(cutAim == null ? 'cut_tap' : 'cut_ready'))}</p>
+      <div class="stackbtns"><button class="btn primary" data-act="cutgo" ${cutAim == null ? 'disabled' : ''}>✂️ ${esc(t('cut_go'))}</button></div>`;
+  }
+  function cutResultHTML() {
+    const c = st.cutInfo;
+    if (!c) return '';
+    const mine = c.pi === ME;
+    return `<h2>${c.hit ? '🎉 ' + esc(t('cut_hit_title')) : '✂️ ' + esc(t('cut_miss_title'))}</h2>
+      <div class="cutres ${c.hit ? 'hit' : ''}"><b>${c.left}</b><span>${esc(t('cut_left_of', { n: c.target }))}</span></div>
+      <p>${esc(c.hit ? t(mine ? 'cut_hit_me' : 'cut_hit_other', { name: nameOf(c.pi), bonus: E.RULES.cutBonus }) : t(mine ? 'cut_miss_me' : 'cut_miss_other', { name: nameOf(c.pi), n: c.left, target: c.target }))}</p>
+      <div class="stackbtns"><button class="btn primary" data-act="close">${esc(t('cut_play'))}</button></div>`;
+  }
+  // ukazatel na balíčku: prstem nebo myší vybrat, kde sejmout
+  function cutPointer(ev) {
+    const el = document.getElementById('cutDeck');
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const frac = Math.max(0, Math.min(1, (r.bottom - ev.clientY) / r.height));
+    const total = deckTotal();
+    cutAim = Math.max(1, Math.min(total - 1, Math.round(frac * total)));
+    renderOverlay();
+  }
+  let cutting = false;
+  document.addEventListener('pointerdown', (ev) => { if (ev.target.closest && ev.target.closest('#cutDeck')) { cutting = true; cutPointer(ev); ev.preventDefault(); } });
+  document.addEventListener('pointermove', (ev) => { if (cutting) { cutPointer(ev); ev.preventDefault(); } }, { passive: false });
+  document.addEventListener('pointerup', () => { cutting = false; });
+  document.addEventListener('pointercancel', () => { cutting = false; });
 
   // ---------- obrázky hráčů ----------
   function avColor(id) {
@@ -4157,7 +4464,7 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
   }
 
   // ---------- výuka ----------
-  const TUT_SLIDES = 5;
+  const TUT_SLIDES = 6;
   function tutIntroHTML() {
     const i = Math.max(0, Math.min(TUT_SLIDES - 1, tut.slide));
     const last = i === TUT_SLIDES - 1;
@@ -4176,7 +4483,12 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
     const lab = (ids) => ids.map((id) => myHand().find((c) => c.id === id)).filter(Boolean).map(cardLabel).join(' ');
     if (st.phase === 'roundOver') return { text: t('coach_round') };
     if (st.phase === 'gameOver') return { text: t('coach_over'), act: 'tostart', label: t('main_menu') };
+    if (st.phase === 'cut') return myTurn() ? { text: t('coach_cut', { n: E.RULES.handSize * st.players.length, bonus: E.RULES.cutBonus }) } : { text: t('coach_wait', { name: nameOf(st.current) }) };
     if (!myTurn()) return { text: t('coach_wait', { name: nameOf(st.current) }) };
+    if (canRedrawNow()) {
+      const c = myHand().find((x) => x.id === st.turn.drawnId);
+      if (c) return { text: t(B.cardFits(myHand(), c) ? 'coach_redraw_keep' : 'coach_redraw', { card: cardLabel(c) }), ids: [c.id], label: t('show_me') };
+    }
     const team = st.teams[US()];
     const openNote = E.needsOpen(team) ? ' ' + t('coach_open', { min: E.RULES.openMin, v: st.turn.laid || 0 }) : '';
     if (st.phase === 'draw') {
@@ -4268,6 +4580,8 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
     else if (overlay === 'avatar' && net.user) html = avatarPageHTML();
     else if (overlay === 'privacy') html = privacyHTML();
     else if (overlay === 'tutintro') html = tutIntroHTML();
+    else if (overlay === 'cut') html = st.phase === 'cut' && myTurn() ? cutHTML() : (overlay = null, '');
+    else if (overlay === 'cutres') html = cutResultHTML();
     else if (overlay === 'solo') html = soloHTML();
     else if (overlay === 'multi' && net.user) html = multiHTML();
     const full = `<div class="sheet" role="dialog" aria-modal="true">${html}</div>`;
@@ -4315,6 +4629,28 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
     soundEvents();
     tickTimers();
     playAnim(animSnap);
+    cutFlow();
+  }
+  // když jsem na řadě se sejmutím, otevře se okno; po sejmutí se ukáže výsledek
+  function cutFlow() {
+    if (!st || (online() && net.view && net.view.status !== 'playing')) return;
+    if (st.phase === 'cut') {
+      cutShown = null;
+      if (myTurn() && !overlay && !cutAuto) { cutAuto = true; overlay = 'cut'; renderOverlay(); }
+      return;
+    }
+    cutAuto = false;
+    const c = st.cutInfo;
+    const fresh = st.log.slice(-8).some((m) => m && (m.k === 'log_cut' || m.k === 'log_cut_hit'));
+    if (c && fresh && c.round === st.round && cutShown !== st.round && (st.phase === 'draw' || st.phase === 'play')) {
+      cutShown = st.round;
+      if (c.pi === ME) {
+        if (!overlay) { overlay = 'cutres'; renderOverlay(); }
+      } else {
+        toast(c.hit ? t('cut_hit_other', { name: nameOf(c.pi), bonus: E.RULES.cutBonus }) : t('cut_miss_other', { name: nameOf(c.pi), n: c.left, target: c.target }), c.hit ? 'info' : undefined);
+      }
+      if (c.hit) S.sfx('win');
+    }
   }
 
   // ---------- pohyb karet ----------
@@ -4402,6 +4738,13 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
       const topEl = pileEl.querySelector('.card');
       const from = snap.hand.get(now.top) || seatRect(pi);
       if (topEl) fly(topEl.outerHTML.replace(/ data-cid="\d+"/, ''), from, topEl.getBoundingClientRect(), 0, topEl);
+    } else if (L.k === 'log_redraw') {
+      // odmítnutá karta letí na hromádku, nová z balíčku do ruky
+      const topEl = pileEl && pileEl.querySelector('.card');
+      const from = snap.hand.get(now.top) || seatRect(pi);
+      if (topEl) fly(topEl.outerHTML.replace(/ data-cid="\d+"/, ''), from, topEl.getBoundingClientRect(), 0, topEl);
+      if (pi === ME) newInHand.forEach((id, i) => { const e = handEl(id); if (e) fly(backFace(), stockR, rectOf(e.querySelector('.card')), 260 + 90 * i, e); });
+      else fly(backFace(), stockR, seatRect(pi), 260, null);
     } else if (L.k === 'log_draw' || L.k === 'log_draw_red') {
       if (pi === ME) {
         newInHand.forEach((id, i) => { const e = handEl(id); if (e) fly(backFace(), stockR, rectOf(e.querySelector('.card')), 90 * i, e); });
@@ -4454,7 +4797,7 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
     else if (sig.melds > prev.melds && sig.round === prev.round) S.sfx('meld');
     else if (sig.log !== prev.log && last) {
       if (last.k === 'log_discard') S.sfx('card');
-      else if (last.k === 'log_draw' || last.k === 'log_draw_red' || last.k === 'log_take_pile') S.sfx('draw');
+      else if (last.k === 'log_draw' || last.k === 'log_draw_red' || last.k === 'log_take_pile' || last.k === 'log_redraw') S.sfx('draw');
     }
     if (online() && sig.mine && !prev.mine) {
       setTimeout(() => S.sfx('turn'), 180);
@@ -4834,8 +5177,8 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
   function schedule() {
     clearTimeout(botTimer);
     if (!st || overlay || online()) return;
-    if ((st.phase === 'draw' || st.phase === 'play') && st.players[st.current].isBot) {
-      const base = st.phase === 'draw' ? 1100 : 1300; // pomaleji, ať je vidět, jak karty jezdí
+    if ((st.phase === 'draw' || st.phase === 'play' || st.phase === 'cut') && st.players[st.current].isBot) {
+      const base = st.phase === 'draw' ? 1100 : st.phase === 'cut' ? 1500 : 1300; // pomaleji, ať je vidět, jak karty jezdí
       botTimer = setTimeout(botTick, base);
     }
   }
@@ -5033,6 +5376,22 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
       case 'pushon': enablePush(); return;
       case 'pushtoggle': if (v === '1') enablePush(); else disablePush(); return;
       case 'tutorial': tut.slide = 0; openPage('tutintro'); break;
+      case 'opencut': if (st.phase === 'cut' && myTurn()) overlay = 'cut'; break;
+      case 'cutgo': {
+        if (st.phase !== 'cut' || !myTurn() || cutAim == null) return;
+        const aim = cutAim;
+        cutAim = null;
+        cutShown = null;
+        if (online()) { remote({ type: 'cut', aim }); overlay = null; return; }
+        r = E.cutDeck(st, ME, aim);
+        overlay = null;
+        break;
+      }
+      case 'redraw':
+        if (!canRedrawNow()) return;
+        sel.clear();
+        r = online() ? remote({ type: 'redraw' }) : E.redraw(st, ME);
+        break;
       case 'tutnext': tut.slide++; break;
       case 'tutprev': tut.slide = Math.max(0, tut.slide - 1); break;
       case 'tutstart':

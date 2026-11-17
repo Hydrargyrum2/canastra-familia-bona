@@ -1,5 +1,7 @@
 """Test nového rozhraní ve dvou prohlížečích: menu, přihlášení, přátelé, profil, obrázek, ztlumení, výuka, odpočet."""
 import asyncio, random, string, sys
+import sys as _s, os as _o; _s.path.insert(0, _o.path.dirname(_o.path.abspath(__file__)))
+from cuthelp import pass_cut
 from playwright.async_api import async_playwright
 BASE = 'http://127.0.0.1:8787'
 SH = 'tools/shots/'
@@ -91,6 +93,7 @@ async def main():
         await B.click('[data-act=invaccept]')
         await A.wait_for_selector('[data-act=start]:not([disabled])', timeout=8000)
         await A.click('[data-act=start]')
+        await pass_cut(A, B)
         await A.wait_for_selector('#hand .hc', timeout=8000)
         await B.wait_for_selector('#hand .hc', timeout=8000)
         # chat a ztlumení: B napíše, A ho přes jméno v chatu ztlumí
@@ -126,10 +129,11 @@ async def main():
         # výuka
         C = await page(b, 'cs-CZ')
         await C.click('[data-act=tutorial]')
-        for i in range(4):
+        for i in range(5):
             await C.click('[data-act=tutnext]')
         await C.screenshot(path=SH + 'tut-intro.png')
         await C.click('[data-act=tutstart]')
+        await pass_cut(C)
         await C.wait_for_selector('#coach:not([hidden])')
         tip = await C.inner_text('#coach .ct')
         check(len(tip) > 10, 'výuka: nápověda ' + tip[:60])

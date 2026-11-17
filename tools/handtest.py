@@ -1,5 +1,7 @@
 """Test přeskládání karet v ruce: přetažení myší i prstem, klik dál vybírá, nové karty podle hráčova systému."""
 import asyncio, json, sys
+import sys as _s, os as _o; _s.path.insert(0, _o.path.dirname(_o.path.abspath(__file__)))
+from cuthelp import pass_cut
 from playwright.async_api import async_playwright
 BASE = 'http://127.0.0.1:8787'
 fails = 0
@@ -36,6 +38,7 @@ async def main():
         await pg.wait_for_selector('[data-act=solo]')
         await pg.click('[data-act=solo]')
         await pg.click('[data-act=new1]')
+        await pass_cut(pg)
         await pg.wait_for_selector('#hand .hc')
         # počkat, až budu na tahu
         await pg.wait_for_selector('#actions [data-act=draw]', timeout=15000)
@@ -87,6 +90,7 @@ async def main():
         st = await pg.evaluate("JSON.parse(localStorage.getItem('canastra-bona-ruka'))")
         check(st and st['manual'] is True, 'vlastní pořadí se pamatuje i po zavření')
         await pg.reload()
+        await pass_cut(pg)
         await pg.wait_for_selector('#hand .hc')
         check(await order(pg) == after, 'po znovunačtení stejné pořadí')
         # tlačítko řazení
