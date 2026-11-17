@@ -259,6 +259,7 @@
     cutAim = null;
     cutAuto = false;
     cutShown = null;
+    roundShown = null;
   }
   function save() {
     if (online()) return;
@@ -571,6 +572,7 @@
   let cutAim = null; // kolik karet má podle hráče zůstat dole
   let cutShown = null; // kolo, jehož výsledek sejmutí už hráč viděl
   let cutAuto = false; // okno se sejmutím se samo otevřelo (podruhé už jen tlačítkem)
+  let roundShown = null; // u kterého konce kola se už souhrn sám otevřel
   function canRedrawNow() {
     if (!st || st.phase !== 'play' || !myTurn()) return false;
     return online() ? !!(st.turn && st.turn.canRedraw) : E.canRedraw(st, ME);
@@ -1731,7 +1733,9 @@
     if (online()) { render(); return; }
     if (st.phase === 'roundOver' || st.phase === 'gameOver') {
       sel.clear();
-      if (!overlay) overlay = 'round';
+      // souhrn se otevře sám jen jednou; po „Podívat se na stůl“ zůstane stůl vidět
+      const key = st.phase + ':' + st.round;
+      if (!overlay && roundShown !== key) { overlay = 'round'; roundShown = key; }
     }
     save();
     render();
@@ -2409,6 +2413,7 @@
       localStarted = true;
       if (saved.tut && saved.tut.on) tut = { on: true, hidden: !!saved.tut.hidden, slide: 0 };
       overlay = st.phase === 'roundOver' || st.phase === 'gameOver' ? 'round' : null;
+      if (overlay === 'round') roundShown = st.phase + ':' + st.round;
     } else {
       newMatch('1v1');
       overlay = 'start';
