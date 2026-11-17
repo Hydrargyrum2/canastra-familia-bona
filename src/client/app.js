@@ -354,9 +354,10 @@
       const cls = can ? (E.isClean(m) ? 'clean' : 'dirty') : '';
       const label = can ? (E.isClean(m) ? t('clean_can') : t('dirty_can')) : (m.type === 'set' ? t('meld_set') : t('meld_seq'));
       const inner = E.meldOrder(m).map(cardWithId).join('') + `<span class="mc">${m.cards.length}</span>`;
+      const mid = ti === US() ? ` data-mid="${m.id}"` : '';
       return targetable
-        ? `<button class="meld ${cls} target" data-meld="${m.id}" aria-label="${esc(t('add_to', { label, n: m.cards.length }))}">${inner}</button>`
-        : `<div class="meld ${cls}" aria-label="${esc(label)}">${inner}</div>`;
+        ? `<button class="meld ${cls} target" data-meld="${m.id}"${mid} aria-label="${esc(t('add_to', { label, n: m.cards.length }))}">${inner}</button>`
+        : `<div class="meld ${cls}"${mid} aria-label="${esc(label)}">${inner}</div>`;
     }).join('') : (red3 ? '' : `<p class="empty">${esc(t('none_yet'))}</p>`);
     const mine = ti === US();
     const title = mine ? (mode === '2v2' ? t('melds_ours') : t('melds_mine')) : t('melds_of', { name: teamName(ti) });
@@ -2019,6 +2020,28 @@
   }
   function clearMarks() {
     document.querySelectorAll('#hand .drop-before, #hand .drop-after').forEach((e) => e.classList.remove('drop-before', 'drop-after'));
+    document.querySelectorAll('.droptarget').forEach((e) => e.classList.remove('droptarget'));
+  }
+  // karty, které se táhnou: vybrané karty, pokud je mezi nimi ta chycená, jinak jen ona
+  const dragIds = () => (drag && sel.has(drag.id) && sel.size > 1 ? Array.from(sel) : drag ? [drag.id] : []);
+  function tableTarget(x, y) {
+    if (!myTurn() || st.phase !== 'play' || overlay) return null;
+    const el = document.elementFromPoint(x, y);
+    if (!el || el.closest('#hand')) return null;
+    const meld = el.closest('#myMelds [data-mid]');
+    if (meld) return { kind: 'add', el: meld, meldId: Number(meld.dataset.mid) };
+    const pile = el.closest('#center [data-act=pile]');
+    if (pile && dragIds().length === 1) return { kind: 'discard', el: pile };
+    const area = el.closest('#myMelds');
+    if (area && dragIds().length >= 3) return { kind: 'new', el: area };
+    return null;
+  }
+  function dropOnTable(tg, ids) {
+    if (tg.kind === 'discard') { sel.clear(); sel.add(ids[0]); act('discard'); return; }
+    if (tg.kind === 'new') { sel.clear(); ids.forEach((id) => sel.add(id)); act('meld'); return; }
+    const r = attempt('add', { ids, meldId: tg.meldId });
+    if (r && !r.ok) toast(tr(r.error)); else if (r) sel.clear();
+    afterChange();
   }
   function activateDrag(x, y) {
     drag.active = true;
@@ -2029,8 +2052,11 @@
     g.style.width = r.width + 'px';
     g.style.left = r.left + 'px';
     g.style.top = r.top + 'px';
+    const n = dragIds().length;
+    if (n > 1) g.dataset.n = n;
     document.body.appendChild(g);
     drag.ghost = g;
+    if (n > 1) document.querySelectorAll('#hand .hc.sel').forEach((e) => e.classList.add('dragging'));
     drag.ox = drag.x0 - r.left;
     drag.oy = drag.y0 - r.top;
     drag.el.classList.add('dragging');
@@ -2041,6 +2067,8 @@
     drag.ghost.style.left = (x - drag.ox) + 'px';
     drag.ghost.style.top = (y - drag.oy) + 'px';
     clearMarks();
+    const tt = tableTarget(x, y);
+    if (tt) { tt.el.classList.add('droptarget'); return; }
     const tg = dropTarget(x, y);
     if (tg) tg.el.classList.add(tg.after ? 'drop-after' : 'drop-before');
   }
@@ -2077,10 +2105,18 @@
     const d = drag;
     clearTimeout(d.timer);
     if (d.active) {
-      const tg = !cancel && ev ? dropTarget(ev.clientX, ev.clientY) : null;
+      const tt = !cancel && ev ? tableTarget(ev.clientX, ev.clientY) : null;
+      const ids = dragIds();
+      const tg = !cancel && ev && !tt ? dropTarget(ev.clientX, ev.clientY) : null;
       if (d.ghost) d.ghost.remove();
       clearMarks();
       drag = null;
+      if (tt) {
+        suppressClick = true;
+        setTimeout(() => { suppressClick = false; }, 0);
+        dropOnTable(tt, ids);
+        return;
+      }
       // potlačit jen klik, který prohlížeč pošle hned po puštění karty
       suppressClick = true;
       setTimeout(() => { suppressClick = false; }, 0);
