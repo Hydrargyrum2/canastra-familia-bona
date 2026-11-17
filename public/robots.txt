@@ -1,0 +1,5 @@
+User-agent: *
+Allow: /
+Disallow: /api/
+
+Sitemap: https://canastra-familia-bona.faldik2033.workers.dev/sitemap.xml
