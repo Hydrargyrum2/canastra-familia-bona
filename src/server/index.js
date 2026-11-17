@@ -934,7 +934,7 @@ export class Table extends DurableObject {
       case 'meld': return E.meldNew(g, seat, ids, prefer);
       case 'add': return E.addToMeld(g, seat, meldId, ids, prefer);
       case 'discard': return E.discard(g, seat, Number(a.id));
-      case 'undo': return E.undoTurn(g, seat);
+      case 'retract': return E.retractOpening(g, seat);
       case 'cut': return E.cutDeck(g, seat, Number(a.aim));
       case 'redraw': return E.redraw(g, seat);
       default: return { ok: false, error: M('bad_request') };
@@ -1027,7 +1027,7 @@ export class Table extends DurableObject {
     }
     if (g.phase === 'play') {
       for (const c of g.players[pi].hand) if (!E.discardError(g, pi, c.id)) { E.discard(g, pi, c.id); return; }
-      E.undoTurn(g, pi);
+      if (E.canRetract(g, pi)) E.retractOpening(g, pi); else E.undoTurn(g, pi);
     }
   }
 
@@ -1056,7 +1056,8 @@ export class Table extends DurableObject {
         mustMeld: t.mustMeld == null ? null : t.mustMeld,
         pileForbidden: !!t.pileForbidden,
         lastTurn: !!t.lastTurn,
-        canUndo: !!t.snap && g.current === seat,
+        noLay: !!t.noLay,
+        canRetract: g.current === seat && E.canRetract(g, seat),
         newIds: g.current === seat ? t.newIds || [] : [],
         canRedraw: g.current === seat && E.canRedraw(g, seat),
       },

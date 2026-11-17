@@ -762,7 +762,7 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
   const ORDER = ['4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A']; // 4 nejnižší, eso nejvyšší
   const SET_RANKS = ['K', 'A', '4'];
   const M = (k, p) => ({ k, p: p || {} }); // zpráva pro překlad: klíč + parametry
-  const RULES = { target: 4000, openThreshold: 2000, openMin: 150, handSize: 13, canasta: 7, cutBonus: 100, cutJitter: 2 };
+  const RULES = { target: 4000, openThreshold: 2000, openMin: 150, openStep: 50, handSize: 13, canasta: 7, cutBonus: 100, cutJitter: 2 };
 
   // ---------- karty ----------
   function makeDeck() {
@@ -963,6 +963,8 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
   }
 
   const needsOpen = (team) => team.needOpen && !team.opened;
+  // kolik musí mít první vyložení teď (po každém nepovedeném pokusu v kole o 50 víc)
+  const openReq = (team) => team.openReq || RULES.openMin;
 
   function startRound(st, rng) {
     rng = rng || Math.random;
@@ -977,6 +979,7 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
       t.red3 = [];
       t.opened = false;
       t.needOpen = t.score >= RULES.openThreshold;
+      t.openReq = RULES.openMin;
     }
     for (const p of st.players) p.hand = [];
     st.cutInfo = null;
@@ -1200,8 +1203,8 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
     if (a.error) return { error: a.error };
     const canastaAfter = hasCanasta(team) || (meld ? meld.cards.length : 0) + cards.length >= RULES.canasta;
     if (remaining <= 1 && !canastaAfter) return { error: M('keep_two') };
-    if (remaining === 0 && needsOpen(team) && sumValue(cards) < RULES.openMin) {
-      return { error: M('open_min_short', { min: RULES.openMin }) };
+    if (remaining === 0 && needsOpen(team) && sumValue(cards) < openReq(team)) {
+      return { error: M('open_min_short', { min: openReq(team) }) };
     }
     return { top, handCards, cards, meld, a };
   }
@@ -1256,13 +1259,14 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
     if (remaining <= 1 && !canastaAfter) return M('keep_two');
     if (remaining === 0 && needsOpen(team)) {
       const v = st.turn.laid + sumValue(cards);
-      if (v < RULES.openMin) return M('open_min', { min: RULES.openMin, v });
+      if (v < openReq(team)) return M('open_min', { min: openReq(team), v });
     }
     return null;
   }
 
   function checkMeldNew(st, pi, ids, prefer) {
     if (st.phase !== 'play' || st.current !== pi) return { error: M('cant_meld') };
+    if (st.turn.noLay) return { error: M('no_lay_after_fail') };
     const p = st.players[pi];
     const cards = pickCards(p.hand, ids);
     if (!cards) return { error: M('invalid_selection') };
@@ -1290,6 +1294,7 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
   function checkAdd(st, pi, meldId, ids, prefer) {
     if (st.phase === 'draw' && st.current === pi) return { error: M('draw_first_add') };
     if (st.phase !== 'play' || st.current !== pi) return { error: M('cant_meld') };
+    if (st.turn.noLay) return { error: M('no_lay_after_fail') };
     const p = st.players[pi];
     const team = st.teams[p.team];
     const meld = team.melds.find((m) => m.id === meldId);
@@ -1337,8 +1342,8 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
     if (st.turn.mustMeld != null && p.hand.some((c) => c.id === st.turn.mustMeld)) {
       return M('must_meld_top');
     }
-    if (needsOpen(team) && st.turn.laid > 0 && st.turn.laid < RULES.openMin) {
-      return M('open_min_undo', { min: RULES.openMin, v: st.turn.laid });
+    if (needsOpen(team) && st.turn.laid > 0 && st.turn.laid < openReq(team)) {
+      return M('open_min_undo', { min: openReq(team), v: st.turn.laid });
     }
     if (p.hand.length === 1 && !hasCanasta(team)) return M('last_card_no_canasta');
     return null;
@@ -1349,7 +1354,7 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
     if (e) return fail(e);
     const p = st.players[pi];
     const team = st.teams[p.team];
-    if (needsOpen(team) && st.turn.laid >= RULES.openMin) team.opened = true;
+    if (needsOpen(team) && st.turn.laid >= openReq(team)) team.opened = true;
     const idx = p.hand.findIndex((c) => c.id === id);
     const c = p.hand.splice(idx, 1)[0];
     st.pile.push(c);
@@ -1384,6 +1389,37 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
       }
     }
     return ok();
+  }
+
+  // Nepovedené první vyložení (málo bodů): vyložené karty jdou zpět do ruky, vzatá hromádka zpět na stůl
+  // (hráč si pak lízne z balíčku), limit týmu do konce kola stoupne o 50 a v tomto tahu už jen odhazuje.
+  function canRetract(st, pi) {
+    if (st.phase !== 'play' || st.current !== pi || !st.turn || !st.turn.snap) return false;
+    const team = st.teams[st.players[pi].team];
+    return needsOpen(team) && st.turn.laid > 0 && st.turn.laid < openReq(team);
+  }
+  function retractOpening(st, pi) {
+    if (!canRetract(st, pi)) return fail(M('nothing_to_undo'));
+    const ti = st.players[pi].team;
+    const req = openReq(st.teams[ti]);
+    const v = st.turn.laid;
+    const wasPile = st.turn.from === 'pile';
+    restore(st, st.turn.snap);
+    const next = req + RULES.openStep;
+    st.teams[ti].openReq = next;
+    st.turn.noLay = true;
+    st.turn.canRedraw = false;
+    st.turn.newIds = [];
+    if (wasPile) {
+      st.turn.pileForbidden = true;
+      st.turn.snap = null;
+    }
+    log(st, M(wasPile ? 'log_open_fail_pile' : 'log_open_fail', { pi, v, min: req, next }));
+    if (wasPile && st.turn.lastTurn) {
+      log(st, M('log_stock_out'));
+      endRound(st, null);
+    }
+    return ok({ next });
   }
 
   // ---------- konec kola ----------
@@ -1443,6 +1479,7 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
     layoutSeq, analyzeNewMeld, analyzeAdd, isCanasta, isClean, hasCanasta, meldOrder, needsOpen,
     newGame, startRound, pileError, checkTakePile, drawStock, takePile, passEnd, checkMeldNew, meldNew, checkAdd, addToMeld,
     discardError, discard, undoTurn, cardName, totalCards, cutDeck, canRedraw, redraw, analyzePileAdd,
+    openReq, canRetract, retractOpening,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.Engine = api;
@@ -1659,11 +1696,13 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
     if (E.needsOpen(team)) {
       // první vyložení nad 2 000: buď aspoň 150, nebo nic
       let sim = simulate(st, pi, mode);
-      if (!sim.wentOut && sim.laid < E.RULES.openMin && mode !== 'all' && dangerLevel(st, pi) >= 1) {
+      // když už něco leží (třeba vzatá hromádka), musí vyložení dotáhnout, jinak by ho musel vzít zpět
+      const committed = st.turn && st.turn.laid > 0;
+      if (!sim.wentOut && sim.laid < E.openReq(team) && mode !== 'all' && (committed || dangerLevel(st, pi) >= 1)) {
         mode = 'all';
         sim = simulate(st, pi, mode);
       }
-      if (!sim.wentOut && sim.laid < E.RULES.openMin) return null;
+      if (!sim.wentOut && sim.laid < E.openReq(team)) return null;
     }
     return pickAction(st, pi, mode);
   }
@@ -1711,7 +1750,7 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
     if (!sim.mustOk) return -Infinity;
     if (sim.canClose) return 1000;
     const team = c.teams[c.players[pi].team];
-    if (E.needsOpen(team) && sim.laid < E.RULES.openMin) return -Infinity;
+    if (E.needsOpen(team) && sim.laid < E.openReq(team)) return -Infinity;
     const handAfter = new Set(sim.st.players[pi].hand.map((x) => x.id));
     let gain = 20 + E.cardValue(top);
     let risk = 0;
@@ -1868,7 +1907,8 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
     for (const id of (TUNE.discardOn && LV !== 'easy' ? discardOrder(st, pi) : simpleDiscardOrder(st, pi))) {
       if (!E.discardError(st, pi, id)) return E.discard(st, pi, id);
     }
-    const u = E.undoTurn(st, pi);
+    // nepovedené první vyložení: karty zpět do ruky (limit stoupne), pak jen odhodit; jinak nouzově vrátit tah
+    const u = E.canRetract(st, pi) ? E.retractOpening(st, pi) : E.undoTurn(st, pi);
     if (st.phase === 'play' || st.phase === 'draw') st.turn.bot = { noMeld: true, steps: 0 };
     return u;
   }
@@ -1971,7 +2011,6 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
     keep_two: 'Bez canasty si musíš nechat v ruce aspoň 2 karty.',
     open_min: 'První vyložení musí mít aspoň {min} bodů (teď {v}).',
     open_min_short: 'První vyložení musí mít aspoň {min} bodů.',
-    open_min_undo: 'První vyložení musí mít aspoň {min} bodů (teď {v}). Přidej karty, nebo dej Vrátit.',
     stock_not_empty: 'V balíčku ještě jsou karty.',
     cant_meld: 'Teď nemůžeš vykládat.',
     cant_discard: 'Teď nemůžeš odhazovat.',
@@ -2119,6 +2158,18 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
     app_windows: "Klikni na ikonu instalace vpravo v adresním řádku. Případně v nabídce prohlížeče najdi „Aplikace“ nebo „Uložit a sdílet“ a zvol instalaci.",
     app_iphone_t: "iPhone a iPad (Safari)",
     app_installed_toast: "Hotovo, aplikace je nainstalovaná.",
+    open_min_undo: "Na první vyložení máš {v} z {min} bodů. Přidej karty, nebo odhoď a vyložení vezmi zpět.",
+    no_lay_after_fail: "Po nepovedeném prvním vyložení už v tomhle tahu nevykládáš. Jen odhoď kartu.",
+    retract_title: "Málo na první vyložení",
+    retract_lead: "Máš vyloženo {v} z {min} bodů. Když teď skončíš, karty se ti vrátí do ruky a limit stoupne na {next}. Pak odhodíš.",
+    retract_lead_pile: "Máš vyloženo {v} z {min} bodů. Když teď skončíš, karty se ti vrátí do ruky, hromádka zpět na stůl a limit stoupne na {next}. Pak si lízneš z balíčku a odhodíš.",
+    retract_more: "Ještě vykládat",
+    retract_go: "Vzít zpět",
+    hint_after_fail: "Vyložení se nepovedlo. Odhoď jednu kartu.",
+    log_open_fail: "{name} nemá na první vyložení dost ({v} z {min}). Bere karty zpět, limit stoupá na {next}.",
+    log_open_fail_you: "Na první vyložení nemáš dost ({v} z {min}). Bereš karty zpět, limit stoupá na {next}.",
+    log_open_fail_pile: "{name} nemá na první vyložení dost ({v} z {min}). Vrací karty i hromádku, limit stoupá na {next}.",
+    log_open_fail_pile_you: "Na první vyložení nemáš dost ({v} z {min}). Vracíš karty i hromádku, limit stoupá na {next}.",
     cut_lead: "Nech dole přesně {n} karet a získáš +{bonus} bodů.",
     cut_tap: "Klepni do balíčku.",
     cut_ready: "Místo můžeš ještě posunout.",
@@ -2360,7 +2411,9 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
         <li>Žolíka v postupce můžeš nahradit kartou, kterou zastupuje (z ruky i z hromádky). Žolík se pak posune jinam ve stejné postupce a ty si vybereš, jestli dolů, nebo nahoru. Pod čtyřku ani nad eso nejde a do jiné vykládky ho přesunout nejde. Když je postupka od čtyřky po eso plná, žolík se dá na konec.</li>
         <li>Žolík z kraje postupky se smí posunout do mezery, když tím přikládaná karta zapadne (z ruky i z hromádky). Třeba 7♦ 8♦ 2♦ (jako 9♦) a přiložíš 5♦: dvojka se posune na místo 6♦.</li>
         <li>Canasta má 7 a víc karet. Čistá je bez žolíka.</li>
-        <li>Nad 2 000 bodů musí první vyložení v kole dát aspoň 150 bodů.</li>
+        <li>Nad 2 000 bodů musí první vyložení v kole dát aspoň 150 bodů. Počítá se všechno, co v tom tahu vyložíš, klidně na víc vykládek.</li>
+        <li>Když tah ukončíš s menším součtem, vezmeš vyložené karty zpět do ruky (vzatá hromádka se vrátí na stůl a lízneš si z balíčku), odhodíš a limit tvého týmu do konce kola stoupne o 50 (200, 250…).</li>
+        <li>Co jednou vyložíš, zůstane na stole. Tlačítko Vrátit není.</li>
       </ul>
       <h3>Tah</h3>
       <ul>
@@ -2467,7 +2520,6 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
     keep_two: 'Without a canasta you must keep at least 2 cards in hand.',
     open_min: 'Your first meld must be worth at least {min} points (now {v}).',
     open_min_short: 'Your first meld must be worth at least {min} points.',
-    open_min_undo: 'Your first meld must be worth at least {min} points (now {v}). Meld more cards or tap Undo.',
     stock_not_empty: 'There are still cards in the stock.',
     cant_meld: "You can't meld now.",
     cant_discard: "You can't discard now.",
@@ -2612,6 +2664,18 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
     app_windows: "Click the install icon on the right of the address bar. Or look for “Apps” or “Save and share” in the browser menu and choose install.",
     app_iphone_t: "iPhone and iPad (Safari)",
     app_installed_toast: "Done, the app is installed.",
+    open_min_undo: "Your first meld has {v} of {min} points. Meld more, or discard and take the meld back.",
+    no_lay_after_fail: "After a failed first meld you can't meld again this turn. Just discard.",
+    retract_title: "Not enough for the first meld",
+    retract_lead: "You have {v} of {min} points on the table. If you stop now, the cards go back to your hand and the minimum rises to {next}. Then you discard.",
+    retract_lead_pile: "You have {v} of {min} points on the table. If you stop now, the cards go back to your hand, the pile goes back on the table and the minimum rises to {next}. Then you draw from the stock and discard.",
+    retract_more: "Keep melding",
+    retract_go: "Take it back",
+    hint_after_fail: "The meld failed. Discard one card.",
+    log_open_fail: "{name} doesn't have enough for the first meld ({v} of {min}). Cards go back, the minimum rises to {next}.",
+    log_open_fail_you: "You don't have enough for the first meld ({v} of {min}). Cards go back, the minimum rises to {next}.",
+    log_open_fail_pile: "{name} doesn't have enough for the first meld ({v} of {min}). Cards and pile go back, the minimum rises to {next}.",
+    log_open_fail_pile_you: "You don't have enough for the first meld ({v} of {min}). Cards and pile go back, the minimum rises to {next}.",
     cut_lead: "Leave exactly {n} cards at the bottom for +{bonus} points.",
     cut_tap: "Tap the deck.",
     cut_ready: "You can still move it.",
@@ -2853,7 +2917,9 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
         <li>You can replace a wild card in a run with the card it stands for (from your hand or the pile). The wild card then moves to another spot in the same run, and you choose whether it goes to the bottom or the top. It can never go below 4 or above ace, and never to a different meld. If the run is complete from 4 to ace, the wild card goes at the end.</li>
         <li>A wild card at the end of a run may move into a gap so that the card you add fits (from your hand or the pile). For example 7♦ 8♦ 2♦ (as 9♦) plus 5♦: the two moves to the 6♦ spot.</li>
         <li>A canasta has 7 or more cards. A clean canasta has no wild card.</li>
-        <li>Above 2,000 points your first meld of a round must be worth at least 150.</li>
+        <li>Above 2,000 points your first meld of a round must be worth at least 150. Everything you meld in that turn counts, even across several melds.</li>
+        <li>If you end the turn with less, the cards go back to your hand (a taken pile goes back on the table and you draw from the stock), you discard, and your team's minimum rises by 50 for the rest of the round (200, 250…).</li>
+        <li>Whatever you meld stays on the table. There is no Undo.</li>
       </ul>
       <h3>Your turn</h3>
       <ul>
@@ -2960,7 +3026,6 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
     keep_two: 'Sem canastra, você precisa ficar com pelo menos 2 cartas na mão.',
     open_min: 'A primeira baixada precisa valer pelo menos {min} pontos (agora {v}).',
     open_min_short: 'A primeira baixada precisa valer pelo menos {min} pontos.',
-    open_min_undo: 'A primeira baixada precisa valer pelo menos {min} pontos (agora {v}). Baixe mais cartas ou toque em Desfazer.',
     stock_not_empty: 'Ainda há cartas no monte.',
     cant_meld: 'Você não pode baixar agora.',
     cant_discard: 'Você não pode descartar agora.',
@@ -3105,6 +3170,18 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
     app_windows: "Clique no ícone de instalação à direita da barra de endereço. Ou procure “Apps” ou “Salvar e compartilhar” no menu do navegador e escolha instalar.",
     app_iphone_t: "iPhone e iPad (Safari)",
     app_installed_toast: "Pronto, o aplicativo está instalado.",
+    open_min_undo: "Sua primeira baixada tem {v} de {min} pontos. Baixe mais, ou descarte e recolha a baixada.",
+    no_lay_after_fail: "Depois de uma baixada que não valeu você não baixa mais nesta jogada. Só descarte.",
+    retract_title: "Pouco para a primeira baixada",
+    retract_lead: "Você tem {v} de {min} pontos na mesa. Se parar agora, as cartas voltam para a mão e o mínimo sobe para {next}. Depois você descarta.",
+    retract_lead_pile: "Você tem {v} de {min} pontos na mesa. Se parar agora, as cartas voltam para a mão, o lixo volta para a mesa e o mínimo sobe para {next}. Depois você compra do monte e descarta.",
+    retract_more: "Baixar mais",
+    retract_go: "Recolher",
+    hint_after_fail: "A baixada não valeu. Descarte uma carta.",
+    log_open_fail: "{name} não tem o bastante para a primeira baixada ({v} de {min}). Recolhe as cartas, o mínimo sobe para {next}.",
+    log_open_fail_you: "Você não tem o bastante para a primeira baixada ({v} de {min}). Recolhe as cartas, o mínimo sobe para {next}.",
+    log_open_fail_pile: "{name} não tem o bastante para a primeira baixada ({v} de {min}). Devolve as cartas e o lixo, o mínimo sobe para {next}.",
+    log_open_fail_pile_you: "Você não tem o bastante para a primeira baixada ({v} de {min}). Devolve as cartas e o lixo, o mínimo sobe para {next}.",
     cut_lead: "Deixe exatamente {n} cartas embaixo e ganhe +{bonus} pontos.",
     cut_tap: "Toque no baralho.",
     cut_ready: "Ainda dá para mudar.",
@@ -3346,7 +3423,9 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
         <li>Você pode trocar o curinga de uma sequência pela carta que ele representa (da mão ou do lixo). O curinga então muda de lugar na mesma sequência, e você escolhe se vai para baixo ou para cima. Nunca abaixo do 4 nem acima do ás, e nunca para outro jogo. Se a sequência estiver completa do 4 ao ás, o curinga vai para o fim.</li>
         <li>Um curinga na ponta de uma sequência pode ir para um buraco para a carta que você junta encaixar (da mão ou do lixo). Por exemplo 7♦ 8♦ 2♦ (como 9♦) mais 5♦: o dois vai para o lugar do 6♦.</li>
         <li>A canastra tem 7 cartas ou mais. A limpa não tem curinga.</li>
-        <li>Acima de 2.000 pontos, a primeira baixada da rodada precisa valer pelo menos 150.</li>
+        <li>Acima de 2.000 pontos, a primeira baixada da rodada precisa valer pelo menos 150. Conta tudo o que você baixa nessa jogada, mesmo em vários jogos.</li>
+        <li>Se terminar a jogada com menos, as cartas voltam para a mão (o lixo pego volta para a mesa e você compra do monte), você descarta e o mínimo da dupla sobe 50 até o fim da rodada (200, 250…).</li>
+        <li>O que você baixa fica na mesa. Não existe Desfazer.</li>
       </ul>
       <h3>Sua jogada</h3>
       <ul>
@@ -3865,7 +3944,7 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
     const r3pts = E.hasCanasta(team) ? team.red3.length * 100 : 0;
     const red3 = team.red3.length
       ? `<div class="meld red3s ${r3pts ? '' : 'zero'}" title="${esc(t('red3_title', { n: team.red3.length, pts: r3pts }))}" aria-label="${esc(t('red3_title', { n: team.red3.length, pts: r3pts }))}">${team.red3.map(cardWithId).join('')}<span class="mc">${r3pts ? '+' + r3pts : '0'}</span></div>` : '';
-    const open = E.needsOpen(team) ? `<span class="badge">${esc(t('needs_open', { min: E.RULES.openMin }))}</span>` : '';
+    const open = E.needsOpen(team) ? `<span class="badge">${esc(t('needs_open', { min: E.openReq(team) }))}</span>` : '';
     const melds = team.melds.slice().sort((a, b) => (a.type === b.type ? a.id - b.id : a.type === 'set' ? -1 : 1));
     const body = melds.length ? melds.map((m) => {
       const can = E.isCanasta(m);
@@ -3927,9 +4006,9 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
       if (!st.stock.length && canPile) parts.push(t('hint_else_end'));
       hint = esc(parts.join(' '));
     } else {
-      hint = esc(sel.size ? t('hint_sel') : t('hint_play'));
+      hint = esc(st.turn && st.turn.noLay ? t('hint_after_fail') : sel.size ? t('hint_sel') : t('hint_play'));
       if (E.needsOpen(st.teams[US()])) {
-        hint += ` <span class="badge">${esc(t('open_badge', { v: st.turn.laid, min: E.RULES.openMin }))}</span>`;
+        hint += ` <span class="badge">${esc(t('open_badge', { v: st.turn.laid, min: E.openReq(st.teams[US()]) }))}</span>`;
       }
     }
     return `<span class="hint">${hint}</span>`;
@@ -3974,11 +4053,10 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
       return `<button class="btn primary" data-act="draw">${esc(t('btn_draw'))}</button>
         <button class="btn" data-act="pile">${esc(t('btn_take_pile'))}</button>`;
     }
-    const canUndo = (st.turn.snap || st.turn.canUndo) && (st.turn.from === 'pile' || st.turn.laid > 0);
     const redrawBtn = canRedrawNow() ? `<button class="btn redraw" data-act="redraw" title="${esc(t('redraw_hint'))}">🔄 ${esc(t('redraw_btn'))}</button>` : '';
     return `${redrawBtn}<button class="btn ${sel.size >= 3 ? 'primary' : ''}" data-act="meld" ${sel.size >= 3 ? '' : 'disabled'}>${esc(t('btn_meld'))}</button>
       <button class="btn ${sel.size === 1 ? 'primary' : ''}" data-act="discard" ${sel.size === 1 ? '' : 'disabled'}>${esc(t('btn_discard'))}</button>
-      <button class="btn" data-act="undo" ${canUndo ? '' : 'disabled'}>${esc(t('btn_undo'))}</button>`;
+`;
   }
 
   // ---------- překryvná okna ----------
@@ -4086,6 +4164,23 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
         </tbody>
       </table>
       <div class="stackbtns">${buttons}</div>`;
+  }
+
+  // ---------- nepovedené první vyložení ----------
+  function canRetractNow() {
+    if (!st || st.phase !== 'play' || !myTurn() || !st.turn) return false;
+    return online() ? !!st.turn.canRetract : E.canRetract(st, ME);
+  }
+  function retractHTML() {
+    const team = st.teams[US()];
+    const min = E.openReq(team);
+    const pile = st.turn.from === 'pile';
+    return `<h2>${esc(t('retract_title'))}</h2>
+      <p>${esc(t(pile ? 'retract_lead_pile' : 'retract_lead', { v: st.turn.laid, min, next: min + E.RULES.openStep }))}</p>
+      <div class="stackbtns">
+        <button class="btn primary" data-act="close">${esc(t('retract_more'))}</button>
+        <button class="btn" data-act="retract">${esc(t('retract_go'))}</button>
+      </div>`;
   }
 
   // ---------- velikost karet na stole (zvlášť moje vykládky a soupeřovy) ----------
@@ -4570,7 +4665,7 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
       if (c) return { text: t(B.cardFits(myHand(), c) ? 'coach_redraw_keep' : 'coach_redraw', { card: cardLabel(c) }), ids: [c.id], label: t('show_me') };
     }
     const team = st.teams[US()];
-    const openNote = E.needsOpen(team) ? ' ' + t('coach_open', { min: E.RULES.openMin, v: st.turn.laid || 0 }) : '';
+    const openNote = E.needsOpen(team) ? ' ' + t('coach_open', { min: E.openReq(team), v: st.turn.laid || 0 }) : '';
     if (st.phase === 'draw') {
       const ch = B.pileChoice(st, ME);
       const top = st.pile[st.pile.length - 1];
@@ -4662,6 +4757,7 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
     else if (overlay === 'tutintro') html = tutIntroHTML();
     else if (overlay === 'cut') html = st.phase === 'cut' && myTurn() ? cutHTML() : (overlay = null, '');
     else if (overlay === 'cutres') html = cutResultHTML();
+    else if (overlay === 'retract') html = canRetractNow() ? retractHTML() : (overlay = null, '');
     else if (overlay === 'solo') html = soloHTML();
     else if (overlay === 'multi' && net.user) html = multiHTML();
     const full = `<div class="sheet" role="dialog" aria-modal="true">${html}</div>`;
@@ -5284,7 +5380,7 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
     }
     if (st.phase === 'play') {
       for (const c of st.players[pi].hand) if (!E.discardError(st, pi, c.id)) { E.discard(st, pi, c.id); return; }
-      E.undoTurn(st, pi);
+      if (E.canRetract(st, pi)) E.retractOpening(st, pi); else E.undoTurn(st, pi);
     }
   }
   function afterChange() {
@@ -5633,11 +5729,14 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
           const err = E.discardError(st, ME, Array.from(sel)[0]);
           r = err ? { ok: false, error: err } : remote({ type: 'discard', id: Array.from(sel)[0] });
         } else r = E.discard(st, ME, Array.from(sel)[0]);
-        if (r.ok) sel.clear();
+        // málo bodů na první vyložení: nabídnout vzít vyložení zpět (limit stoupne o 50)
+        if (!r.ok && r.error && r.error.k === 'open_min_undo' && canRetractNow()) { overlay = 'retract'; r = null; }
+        if (r && r.ok) sel.clear();
         break;
-      case 'undo':
+      case 'retract':
         if (!myTurn()) return;
-        r = online() ? remote({ type: 'undo' }) : E.undoTurn(st, ME);
+        overlay = null;
+        r = online() ? remote({ type: 'retract' }) : E.retractOpening(st, ME);
         if (r.ok) sel.clear();
         break;
       default:

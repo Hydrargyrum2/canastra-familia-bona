@@ -8,7 +8,7 @@
   const ORDER = ['4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A']; // 4 nejnižší, eso nejvyšší
   const SET_RANKS = ['K', 'A', '4'];
   const M = (k, p) => ({ k, p: p || {} }); // zpráva pro překlad: klíč + parametry
-  const RULES = { target: 4000, openThreshold: 2000, openMin: 150, handSize: 13, canasta: 7, cutBonus: 100, cutJitter: 2 };
+  const RULES = { target: 4000, openThreshold: 2000, openMin: 150, openStep: 50, handSize: 13, canasta: 7, cutBonus: 100, cutJitter: 2 };
 
   // ---------- karty ----------
   function makeDeck() {
@@ -209,6 +209,8 @@
   }
 
   const needsOpen = (team) => team.needOpen && !team.opened;
+  // kolik musí mít první vyložení teď (po každém nepovedeném pokusu v kole o 50 víc)
+  const openReq = (team) => team.openReq || RULES.openMin;
 
   function startRound(st, rng) {
     rng = rng || Math.random;
@@ -223,6 +225,7 @@
       t.red3 = [];
       t.opened = false;
       t.needOpen = t.score >= RULES.openThreshold;
+      t.openReq = RULES.openMin;
     }
     for (const p of st.players) p.hand = [];
     st.cutInfo = null;
@@ -446,8 +449,8 @@
     if (a.error) return { error: a.error };
     const canastaAfter = hasCanasta(team) || (meld ? meld.cards.length : 0) + cards.length >= RULES.canasta;
     if (remaining <= 1 && !canastaAfter) return { error: M('keep_two') };
-    if (remaining === 0 && needsOpen(team) && sumValue(cards) < RULES.openMin) {
-      return { error: M('open_min_short', { min: RULES.openMin }) };
+    if (remaining === 0 && needsOpen(team) && sumValue(cards) < openReq(team)) {
+      return { error: M('open_min_short', { min: openReq(team) }) };
     }
     return { top, handCards, cards, meld, a };
   }
@@ -502,13 +505,14 @@
     if (remaining <= 1 && !canastaAfter) return M('keep_two');
     if (remaining === 0 && needsOpen(team)) {
       const v = st.turn.laid + sumValue(cards);
-      if (v < RULES.openMin) return M('open_min', { min: RULES.openMin, v });
+      if (v < openReq(team)) return M('open_min', { min: openReq(team), v });
     }
     return null;
   }
 
   function checkMeldNew(st, pi, ids, prefer) {
     if (st.phase !== 'play' || st.current !== pi) return { error: M('cant_meld') };
+    if (st.turn.noLay) return { error: M('no_lay_after_fail') };
     const p = st.players[pi];
     const cards = pickCards(p.hand, ids);
     if (!cards) return { error: M('invalid_selection') };
@@ -536,6 +540,7 @@
   function checkAdd(st, pi, meldId, ids, prefer) {
     if (st.phase === 'draw' && st.current === pi) return { error: M('draw_first_add') };
     if (st.phase !== 'play' || st.current !== pi) return { error: M('cant_meld') };
+    if (st.turn.noLay) return { error: M('no_lay_after_fail') };
     const p = st.players[pi];
     const team = st.teams[p.team];
     const meld = team.melds.find((m) => m.id === meldId);
@@ -583,8 +588,8 @@
     if (st.turn.mustMeld != null && p.hand.some((c) => c.id === st.turn.mustMeld)) {
       return M('must_meld_top');
     }
-    if (needsOpen(team) && st.turn.laid > 0 && st.turn.laid < RULES.openMin) {
-      return M('open_min_undo', { min: RULES.openMin, v: st.turn.laid });
+    if (needsOpen(team) && st.turn.laid > 0 && st.turn.laid < openReq(team)) {
+      return M('open_min_undo', { min: openReq(team), v: st.turn.laid });
     }
     if (p.hand.length === 1 && !hasCanasta(team)) return M('last_card_no_canasta');
     return null;
@@ -595,7 +600,7 @@
     if (e) return fail(e);
     const p = st.players[pi];
     const team = st.teams[p.team];
-    if (needsOpen(team) && st.turn.laid >= RULES.openMin) team.opened = true;
+    if (needsOpen(team) && st.turn.laid >= openReq(team)) team.opened = true;
     const idx = p.hand.findIndex((c) => c.id === id);
     const c = p.hand.splice(idx, 1)[0];
     st.pile.push(c);
@@ -630,6 +635,37 @@
       }
     }
     return ok();
+  }
+
+  // Nepovedené první vyložení (málo bodů): vyložené karty jdou zpět do ruky, vzatá hromádka zpět na stůl
+  // (hráč si pak lízne z balíčku), limit týmu do konce kola stoupne o 50 a v tomto tahu už jen odhazuje.
+  function canRetract(st, pi) {
+    if (st.phase !== 'play' || st.current !== pi || !st.turn || !st.turn.snap) return false;
+    const team = st.teams[st.players[pi].team];
+    return needsOpen(team) && st.turn.laid > 0 && st.turn.laid < openReq(team);
+  }
+  function retractOpening(st, pi) {
+    if (!canRetract(st, pi)) return fail(M('nothing_to_undo'));
+    const ti = st.players[pi].team;
+    const req = openReq(st.teams[ti]);
+    const v = st.turn.laid;
+    const wasPile = st.turn.from === 'pile';
+    restore(st, st.turn.snap);
+    const next = req + RULES.openStep;
+    st.teams[ti].openReq = next;
+    st.turn.noLay = true;
+    st.turn.canRedraw = false;
+    st.turn.newIds = [];
+    if (wasPile) {
+      st.turn.pileForbidden = true;
+      st.turn.snap = null;
+    }
+    log(st, M(wasPile ? 'log_open_fail_pile' : 'log_open_fail', { pi, v, min: req, next }));
+    if (wasPile && st.turn.lastTurn) {
+      log(st, M('log_stock_out'));
+      endRound(st, null);
+    }
+    return ok({ next });
   }
 
   // ---------- konec kola ----------
@@ -689,6 +725,7 @@
     layoutSeq, analyzeNewMeld, analyzeAdd, isCanasta, isClean, hasCanasta, meldOrder, needsOpen,
     newGame, startRound, pileError, checkTakePile, drawStock, takePile, passEnd, checkMeldNew, meldNew, checkAdd, addToMeld,
     discardError, discard, undoTurn, cardName, totalCards, cutDeck, canRedraw, redraw, analyzePileAdd,
+    openReq, canRetract, retractOpening,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.Engine = api;

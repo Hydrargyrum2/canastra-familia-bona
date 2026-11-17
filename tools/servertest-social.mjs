@@ -60,7 +60,7 @@ function decide(view) {
   if (a) return a.type === 'new' ? { type: 'meld', ids: a.ids } : { type: 'add', meldId: a.meldId, ids: a.ids };
   for (const c of g.players[s].hand) if (!E.discardError(st, s, c.id)) return { type: 'discard', id: c.id };
   noMeld[s] = true;
-  return { type: 'undo' };
+  return g.turn && g.turn.canRetract ? { type: 'retract' } : null;
 }
 
 async function main() {

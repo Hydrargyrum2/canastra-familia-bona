@@ -57,7 +57,7 @@ function decide(view) {
   if (a) return a.type === 'new' ? { type: 'meld', ids: a.ids } : { type: 'add', meldId: a.meldId, ids: a.ids };
   for (const c of g.players[me].hand) if (!E.discardError(st, me, c.id)) return { type: 'discard', id: c.id };
   noMeldTurn[me] = true; // nesplněné minimum: vrátit a jen odhodit
-  return { type: 'undo' };
+  return g.turn && g.turn.canRetract ? { type: 'retract' } : null;
 }
 
 const lastState = (c) => { const m = c.last('state'); return m && m.s; };

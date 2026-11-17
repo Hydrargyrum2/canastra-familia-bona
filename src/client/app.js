@@ -352,7 +352,7 @@
     const r3pts = E.hasCanasta(team) ? team.red3.length * 100 : 0;
     const red3 = team.red3.length
       ? `<div class="meld red3s ${r3pts ? '' : 'zero'}" title="${esc(t('red3_title', { n: team.red3.length, pts: r3pts }))}" aria-label="${esc(t('red3_title', { n: team.red3.length, pts: r3pts }))}">${team.red3.map(cardWithId).join('')}<span class="mc">${r3pts ? '+' + r3pts : '0'}</span></div>` : '';
-    const open = E.needsOpen(team) ? `<span class="badge">${esc(t('needs_open', { min: E.RULES.openMin }))}</span>` : '';
+    const open = E.needsOpen(team) ? `<span class="badge">${esc(t('needs_open', { min: E.openReq(team) }))}</span>` : '';
     const melds = team.melds.slice().sort((a, b) => (a.type === b.type ? a.id - b.id : a.type === 'set' ? -1 : 1));
     const body = melds.length ? melds.map((m) => {
       const can = E.isCanasta(m);
@@ -414,9 +414,9 @@
       if (!st.stock.length && canPile) parts.push(t('hint_else_end'));
       hint = esc(parts.join(' '));
     } else {
-      hint = esc(sel.size ? t('hint_sel') : t('hint_play'));
+      hint = esc(st.turn && st.turn.noLay ? t('hint_after_fail') : sel.size ? t('hint_sel') : t('hint_play'));
       if (E.needsOpen(st.teams[US()])) {
-        hint += ` <span class="badge">${esc(t('open_badge', { v: st.turn.laid, min: E.RULES.openMin }))}</span>`;
+        hint += ` <span class="badge">${esc(t('open_badge', { v: st.turn.laid, min: E.openReq(st.teams[US()]) }))}</span>`;
       }
     }
     return `<span class="hint">${hint}</span>`;
@@ -461,11 +461,10 @@
       return `<button class="btn primary" data-act="draw">${esc(t('btn_draw'))}</button>
         <button class="btn" data-act="pile">${esc(t('btn_take_pile'))}</button>`;
     }
-    const canUndo = (st.turn.snap || st.turn.canUndo) && (st.turn.from === 'pile' || st.turn.laid > 0);
     const redrawBtn = canRedrawNow() ? `<button class="btn redraw" data-act="redraw" title="${esc(t('redraw_hint'))}">🔄 ${esc(t('redraw_btn'))}</button>` : '';
     return `${redrawBtn}<button class="btn ${sel.size >= 3 ? 'primary' : ''}" data-act="meld" ${sel.size >= 3 ? '' : 'disabled'}>${esc(t('btn_meld'))}</button>
       <button class="btn ${sel.size === 1 ? 'primary' : ''}" data-act="discard" ${sel.size === 1 ? '' : 'disabled'}>${esc(t('btn_discard'))}</button>
-      <button class="btn" data-act="undo" ${canUndo ? '' : 'disabled'}>${esc(t('btn_undo'))}</button>`;
+`;
   }
 
   // ---------- překryvná okna ----------
@@ -573,6 +572,23 @@
         </tbody>
       </table>
       <div class="stackbtns">${buttons}</div>`;
+  }
+
+  // ---------- nepovedené první vyložení ----------
+  function canRetractNow() {
+    if (!st || st.phase !== 'play' || !myTurn() || !st.turn) return false;
+    return online() ? !!st.turn.canRetract : E.canRetract(st, ME);
+  }
+  function retractHTML() {
+    const team = st.teams[US()];
+    const min = E.openReq(team);
+    const pile = st.turn.from === 'pile';
+    return `<h2>${esc(t('retract_title'))}</h2>
+      <p>${esc(t(pile ? 'retract_lead_pile' : 'retract_lead', { v: st.turn.laid, min, next: min + E.RULES.openStep }))}</p>
+      <div class="stackbtns">
+        <button class="btn primary" data-act="close">${esc(t('retract_more'))}</button>
+        <button class="btn" data-act="retract">${esc(t('retract_go'))}</button>
+      </div>`;
   }
 
   // ---------- velikost karet na stole (zvlášť moje vykládky a soupeřovy) ----------
@@ -1057,7 +1073,7 @@
       if (c) return { text: t(B.cardFits(myHand(), c) ? 'coach_redraw_keep' : 'coach_redraw', { card: cardLabel(c) }), ids: [c.id], label: t('show_me') };
     }
     const team = st.teams[US()];
-    const openNote = E.needsOpen(team) ? ' ' + t('coach_open', { min: E.RULES.openMin, v: st.turn.laid || 0 }) : '';
+    const openNote = E.needsOpen(team) ? ' ' + t('coach_open', { min: E.openReq(team), v: st.turn.laid || 0 }) : '';
     if (st.phase === 'draw') {
       const ch = B.pileChoice(st, ME);
       const top = st.pile[st.pile.length - 1];
@@ -1149,6 +1165,7 @@
     else if (overlay === 'tutintro') html = tutIntroHTML();
     else if (overlay === 'cut') html = st.phase === 'cut' && myTurn() ? cutHTML() : (overlay = null, '');
     else if (overlay === 'cutres') html = cutResultHTML();
+    else if (overlay === 'retract') html = canRetractNow() ? retractHTML() : (overlay = null, '');
     else if (overlay === 'solo') html = soloHTML();
     else if (overlay === 'multi' && net.user) html = multiHTML();
     const full = `<div class="sheet" role="dialog" aria-modal="true">${html}</div>`;
@@ -1771,7 +1788,7 @@
     }
     if (st.phase === 'play') {
       for (const c of st.players[pi].hand) if (!E.discardError(st, pi, c.id)) { E.discard(st, pi, c.id); return; }
-      E.undoTurn(st, pi);
+      if (E.canRetract(st, pi)) E.retractOpening(st, pi); else E.undoTurn(st, pi);
     }
   }
   function afterChange() {
@@ -2120,11 +2137,14 @@
           const err = E.discardError(st, ME, Array.from(sel)[0]);
           r = err ? { ok: false, error: err } : remote({ type: 'discard', id: Array.from(sel)[0] });
         } else r = E.discard(st, ME, Array.from(sel)[0]);
-        if (r.ok) sel.clear();
+        // málo bodů na první vyložení: nabídnout vzít vyložení zpět (limit stoupne o 50)
+        if (!r.ok && r.error && r.error.k === 'open_min_undo' && canRetractNow()) { overlay = 'retract'; r = null; }
+        if (r && r.ok) sel.clear();
         break;
-      case 'undo':
+      case 'retract':
         if (!myTurn()) return;
-        r = online() ? remote({ type: 'undo' }) : E.undoTurn(st, ME);
+        overlay = null;
+        r = online() ? remote({ type: 'retract' }) : E.retractOpening(st, ME);
         if (r.ok) sel.clear();
         break;
       default:

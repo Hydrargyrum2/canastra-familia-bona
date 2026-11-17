@@ -86,7 +86,6 @@
     keep_two: 'Bez canasty si musíš nechat v ruce aspoň 2 karty.',
     open_min: 'První vyložení musí mít aspoň {min} bodů (teď {v}).',
     open_min_short: 'První vyložení musí mít aspoň {min} bodů.',
-    open_min_undo: 'První vyložení musí mít aspoň {min} bodů (teď {v}). Přidej karty, nebo dej Vrátit.',
     stock_not_empty: 'V balíčku ještě jsou karty.',
     cant_meld: 'Teď nemůžeš vykládat.',
     cant_discard: 'Teď nemůžeš odhazovat.',
@@ -234,6 +233,18 @@
     app_windows: "Klikni na ikonu instalace vpravo v adresním řádku. Případně v nabídce prohlížeče najdi „Aplikace“ nebo „Uložit a sdílet“ a zvol instalaci.",
     app_iphone_t: "iPhone a iPad (Safari)",
     app_installed_toast: "Hotovo, aplikace je nainstalovaná.",
+    open_min_undo: "Na první vyložení máš {v} z {min} bodů. Přidej karty, nebo odhoď a vyložení vezmi zpět.",
+    no_lay_after_fail: "Po nepovedeném prvním vyložení už v tomhle tahu nevykládáš. Jen odhoď kartu.",
+    retract_title: "Málo na první vyložení",
+    retract_lead: "Máš vyloženo {v} z {min} bodů. Když teď skončíš, karty se ti vrátí do ruky a limit stoupne na {next}. Pak odhodíš.",
+    retract_lead_pile: "Máš vyloženo {v} z {min} bodů. Když teď skončíš, karty se ti vrátí do ruky, hromádka zpět na stůl a limit stoupne na {next}. Pak si lízneš z balíčku a odhodíš.",
+    retract_more: "Ještě vykládat",
+    retract_go: "Vzít zpět",
+    hint_after_fail: "Vyložení se nepovedlo. Odhoď jednu kartu.",
+    log_open_fail: "{name} nemá na první vyložení dost ({v} z {min}). Bere karty zpět, limit stoupá na {next}.",
+    log_open_fail_you: "Na první vyložení nemáš dost ({v} z {min}). Bereš karty zpět, limit stoupá na {next}.",
+    log_open_fail_pile: "{name} nemá na první vyložení dost ({v} z {min}). Vrací karty i hromádku, limit stoupá na {next}.",
+    log_open_fail_pile_you: "Na první vyložení nemáš dost ({v} z {min}). Vracíš karty i hromádku, limit stoupá na {next}.",
     cut_lead: "Nech dole přesně {n} karet a získáš +{bonus} bodů.",
     cut_tap: "Klepni do balíčku.",
     cut_ready: "Místo můžeš ještě posunout.",
@@ -475,7 +486,9 @@
         <li>Žolíka v postupce můžeš nahradit kartou, kterou zastupuje (z ruky i z hromádky). Žolík se pak posune jinam ve stejné postupce a ty si vybereš, jestli dolů, nebo nahoru. Pod čtyřku ani nad eso nejde a do jiné vykládky ho přesunout nejde. Když je postupka od čtyřky po eso plná, žolík se dá na konec.</li>
         <li>Žolík z kraje postupky se smí posunout do mezery, když tím přikládaná karta zapadne (z ruky i z hromádky). Třeba 7♦ 8♦ 2♦ (jako 9♦) a přiložíš 5♦: dvojka se posune na místo 6♦.</li>
         <li>Canasta má 7 a víc karet. Čistá je bez žolíka.</li>
-        <li>Nad 2 000 bodů musí první vyložení v kole dát aspoň 150 bodů.</li>
+        <li>Nad 2 000 bodů musí první vyložení v kole dát aspoň 150 bodů. Počítá se všechno, co v tom tahu vyložíš, klidně na víc vykládek.</li>
+        <li>Když tah ukončíš s menším součtem, vezmeš vyložené karty zpět do ruky (vzatá hromádka se vrátí na stůl a lízneš si z balíčku), odhodíš a limit tvého týmu do konce kola stoupne o 50 (200, 250…).</li>
+        <li>Co jednou vyložíš, zůstane na stole. Tlačítko Vrátit není.</li>
       </ul>
       <h3>Tah</h3>
       <ul>
@@ -582,7 +595,6 @@
     keep_two: 'Without a canasta you must keep at least 2 cards in hand.',
     open_min: 'Your first meld must be worth at least {min} points (now {v}).',
     open_min_short: 'Your first meld must be worth at least {min} points.',
-    open_min_undo: 'Your first meld must be worth at least {min} points (now {v}). Meld more cards or tap Undo.',
     stock_not_empty: 'There are still cards in the stock.',
     cant_meld: "You can't meld now.",
     cant_discard: "You can't discard now.",
@@ -727,6 +739,18 @@
     app_windows: "Click the install icon on the right of the address bar. Or look for “Apps” or “Save and share” in the browser menu and choose install.",
     app_iphone_t: "iPhone and iPad (Safari)",
     app_installed_toast: "Done, the app is installed.",
+    open_min_undo: "Your first meld has {v} of {min} points. Meld more, or discard and take the meld back.",
+    no_lay_after_fail: "After a failed first meld you can't meld again this turn. Just discard.",
+    retract_title: "Not enough for the first meld",
+    retract_lead: "You have {v} of {min} points on the table. If you stop now, the cards go back to your hand and the minimum rises to {next}. Then you discard.",
+    retract_lead_pile: "You have {v} of {min} points on the table. If you stop now, the cards go back to your hand, the pile goes back on the table and the minimum rises to {next}. Then you draw from the stock and discard.",
+    retract_more: "Keep melding",
+    retract_go: "Take it back",
+    hint_after_fail: "The meld failed. Discard one card.",
+    log_open_fail: "{name} doesn't have enough for the first meld ({v} of {min}). Cards go back, the minimum rises to {next}.",
+    log_open_fail_you: "You don't have enough for the first meld ({v} of {min}). Cards go back, the minimum rises to {next}.",
+    log_open_fail_pile: "{name} doesn't have enough for the first meld ({v} of {min}). Cards and pile go back, the minimum rises to {next}.",
+    log_open_fail_pile_you: "You don't have enough for the first meld ({v} of {min}). Cards and pile go back, the minimum rises to {next}.",
     cut_lead: "Leave exactly {n} cards at the bottom for +{bonus} points.",
     cut_tap: "Tap the deck.",
     cut_ready: "You can still move it.",
@@ -968,7 +992,9 @@
         <li>You can replace a wild card in a run with the card it stands for (from your hand or the pile). The wild card then moves to another spot in the same run, and you choose whether it goes to the bottom or the top. It can never go below 4 or above ace, and never to a different meld. If the run is complete from 4 to ace, the wild card goes at the end.</li>
         <li>A wild card at the end of a run may move into a gap so that the card you add fits (from your hand or the pile). For example 7♦ 8♦ 2♦ (as 9♦) plus 5♦: the two moves to the 6♦ spot.</li>
         <li>A canasta has 7 or more cards. A clean canasta has no wild card.</li>
-        <li>Above 2,000 points your first meld of a round must be worth at least 150.</li>
+        <li>Above 2,000 points your first meld of a round must be worth at least 150. Everything you meld in that turn counts, even across several melds.</li>
+        <li>If you end the turn with less, the cards go back to your hand (a taken pile goes back on the table and you draw from the stock), you discard, and your team's minimum rises by 50 for the rest of the round (200, 250…).</li>
+        <li>Whatever you meld stays on the table. There is no Undo.</li>
       </ul>
       <h3>Your turn</h3>
       <ul>
@@ -1075,7 +1101,6 @@
     keep_two: 'Sem canastra, você precisa ficar com pelo menos 2 cartas na mão.',
     open_min: 'A primeira baixada precisa valer pelo menos {min} pontos (agora {v}).',
     open_min_short: 'A primeira baixada precisa valer pelo menos {min} pontos.',
-    open_min_undo: 'A primeira baixada precisa valer pelo menos {min} pontos (agora {v}). Baixe mais cartas ou toque em Desfazer.',
     stock_not_empty: 'Ainda há cartas no monte.',
     cant_meld: 'Você não pode baixar agora.',
     cant_discard: 'Você não pode descartar agora.',
@@ -1220,6 +1245,18 @@
     app_windows: "Clique no ícone de instalação à direita da barra de endereço. Ou procure “Apps” ou “Salvar e compartilhar” no menu do navegador e escolha instalar.",
     app_iphone_t: "iPhone e iPad (Safari)",
     app_installed_toast: "Pronto, o aplicativo está instalado.",
+    open_min_undo: "Sua primeira baixada tem {v} de {min} pontos. Baixe mais, ou descarte e recolha a baixada.",
+    no_lay_after_fail: "Depois de uma baixada que não valeu você não baixa mais nesta jogada. Só descarte.",
+    retract_title: "Pouco para a primeira baixada",
+    retract_lead: "Você tem {v} de {min} pontos na mesa. Se parar agora, as cartas voltam para a mão e o mínimo sobe para {next}. Depois você descarta.",
+    retract_lead_pile: "Você tem {v} de {min} pontos na mesa. Se parar agora, as cartas voltam para a mão, o lixo volta para a mesa e o mínimo sobe para {next}. Depois você compra do monte e descarta.",
+    retract_more: "Baixar mais",
+    retract_go: "Recolher",
+    hint_after_fail: "A baixada não valeu. Descarte uma carta.",
+    log_open_fail: "{name} não tem o bastante para a primeira baixada ({v} de {min}). Recolhe as cartas, o mínimo sobe para {next}.",
+    log_open_fail_you: "Você não tem o bastante para a primeira baixada ({v} de {min}). Recolhe as cartas, o mínimo sobe para {next}.",
+    log_open_fail_pile: "{name} não tem o bastante para a primeira baixada ({v} de {min}). Devolve as cartas e o lixo, o mínimo sobe para {next}.",
+    log_open_fail_pile_you: "Você não tem o bastante para a primeira baixada ({v} de {min}). Devolve as cartas e o lixo, o mínimo sobe para {next}.",
     cut_lead: "Deixe exatamente {n} cartas embaixo e ganhe +{bonus} pontos.",
     cut_tap: "Toque no baralho.",
     cut_ready: "Ainda dá para mudar.",
@@ -1461,7 +1498,9 @@
         <li>Você pode trocar o curinga de uma sequência pela carta que ele representa (da mão ou do lixo). O curinga então muda de lugar na mesma sequência, e você escolhe se vai para baixo ou para cima. Nunca abaixo do 4 nem acima do ás, e nunca para outro jogo. Se a sequência estiver completa do 4 ao ás, o curinga vai para o fim.</li>
         <li>Um curinga na ponta de uma sequência pode ir para um buraco para a carta que você junta encaixar (da mão ou do lixo). Por exemplo 7♦ 8♦ 2♦ (como 9♦) mais 5♦: o dois vai para o lugar do 6♦.</li>
         <li>A canastra tem 7 cartas ou mais. A limpa não tem curinga.</li>
-        <li>Acima de 2.000 pontos, a primeira baixada da rodada precisa valer pelo menos 150.</li>
+        <li>Acima de 2.000 pontos, a primeira baixada da rodada precisa valer pelo menos 150. Conta tudo o que você baixa nessa jogada, mesmo em vários jogos.</li>
+        <li>Se terminar a jogada com menos, as cartas voltam para a mão (o lixo pego volta para a mesa e você compra do monte), você descarta e o mínimo da dupla sobe 50 até o fim da rodada (200, 250…).</li>
+        <li>O que você baixa fica na mesa. Não existe Desfazer.</li>
       </ul>
       <h3>Sua jogada</h3>
       <ul>

@@ -207,11 +207,13 @@
     if (E.needsOpen(team)) {
       // první vyložení nad 2 000: buď aspoň 150, nebo nic
       let sim = simulate(st, pi, mode);
-      if (!sim.wentOut && sim.laid < E.RULES.openMin && mode !== 'all' && dangerLevel(st, pi) >= 1) {
+      // když už něco leží (třeba vzatá hromádka), musí vyložení dotáhnout, jinak by ho musel vzít zpět
+      const committed = st.turn && st.turn.laid > 0;
+      if (!sim.wentOut && sim.laid < E.openReq(team) && mode !== 'all' && (committed || dangerLevel(st, pi) >= 1)) {
         mode = 'all';
         sim = simulate(st, pi, mode);
       }
-      if (!sim.wentOut && sim.laid < E.RULES.openMin) return null;
+      if (!sim.wentOut && sim.laid < E.openReq(team)) return null;
     }
     return pickAction(st, pi, mode);
   }
@@ -259,7 +261,7 @@
     if (!sim.mustOk) return -Infinity;
     if (sim.canClose) return 1000;
     const team = c.teams[c.players[pi].team];
-    if (E.needsOpen(team) && sim.laid < E.RULES.openMin) return -Infinity;
+    if (E.needsOpen(team) && sim.laid < E.openReq(team)) return -Infinity;
     const handAfter = new Set(sim.st.players[pi].hand.map((x) => x.id));
     let gain = 20 + E.cardValue(top);
     let risk = 0;
@@ -416,7 +418,8 @@
     for (const id of (TUNE.discardOn && LV !== 'easy' ? discardOrder(st, pi) : simpleDiscardOrder(st, pi))) {
       if (!E.discardError(st, pi, id)) return E.discard(st, pi, id);
     }
-    const u = E.undoTurn(st, pi);
+    // nepovedené první vyložení: karty zpět do ruky (limit stoupne), pak jen odhodit; jinak nouzově vrátit tah
+    const u = E.canRetract(st, pi) ? E.retractOpening(st, pi) : E.undoTurn(st, pi);
     if (st.phase === 'play' || st.phase === 'draw') st.turn.bot = { noMeld: true, steps: 0 };
     return u;
   }
