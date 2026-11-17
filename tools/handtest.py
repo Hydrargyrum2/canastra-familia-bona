@@ -33,7 +33,8 @@ async def main():
         await pg.goto(BASE + '/')
         await pg.evaluate("localStorage.clear()")
         await pg.reload()
-        await pg.wait_for_selector('[data-act=new1]')
+        await pg.wait_for_selector('[data-act=solo]')
+        await pg.click('[data-act=solo]')
         await pg.click('[data-act=new1]')
         await pg.wait_for_selector('#hand .hc')
         # počkat, až budu na tahu

@@ -164,7 +164,7 @@ async function api(req, env, url) {
     const mode = body.mode === '2v2' ? '2v2' : '1v1';
     for (let i = 0; i < 6; i++) {
       const code = genCode();
-      const r = await table(env, code).init(code, mode, { id: me.id, name: me.name });
+      const r = await table(env, code).init(code, mode, { id: me.id, name: me.name }, { bots: body.bots, level: body.level });
       if (r.ok) return json({ code });
     }
     return fail('server_error', 500);
@@ -653,7 +653,8 @@ export class Table extends DurableObject {
   async save() {
     await this.ctx.storage.put('s', this.s);
   }
-  async init(code, mode, host) {
+  // opts.bots: místa, kam rovnou posadit roboty (např. [1, 3] = dva lidé proti dvěma robotům)
+  async init(code, mode, host, opts) {
     if (this.s) return { ok: false };
     const n = mode === '2v2' ? 4 : 2;
     this.s = {
@@ -662,6 +663,9 @@ export class Table extends DurableObject {
       game: null, chat: [], ready: {}, timers: {}, recorded: false, lastResult: null,
     };
     this.s.seats[0] = { kind: 'human', id: host.id, name: host.name, connected: false, botControl: false };
+    const level = opts && LEVELS.includes(opts.level) ? opts.level : 'medium';
+    const bots = opts && Array.isArray(opts.bots) ? opts.bots.map(Number).filter((i) => i > 0 && i < n) : [];
+    bots.forEach((i, k) => { this.s.seats[i] = { kind: 'bot', name: BOT_NAMES[k % BOT_NAMES.length], level }; });
     await this.save();
     return { ok: true };
   }
@@ -999,13 +1003,15 @@ export class Table extends DurableObject {
     const turnMs = Number(this.env.TURN_MS) || TURN_MS;
     const live = s.status === 'playing' && g && (g.phase === 'draw' || g.phase === 'play');
     const cur = live ? s.seats[g.current] : null;
-    if (cur && cur.kind === 'human' && !cur.botControl && !cur.autoTurn) {
+    // limit platí, jen když u stolu sedí aspoň dva lidé (proti robotům se nespěchá)
+    const humansAtTable = s.seats.filter((x) => x && x.kind === 'human').length;
+    if (cur && cur.kind === 'human' && !cur.botControl && !cur.autoTurn && humansAtTable >= 2) {
       if (s.turnSeat !== g.current || !s.timers.turn) { s.turnSeat = g.current; s.timers.turn = Date.now() + turnMs; }
     } else {
       delete s.timers.turn;
       s.turnSeat = null;
     }
-    if (s.status === 'playing' && g && g.phase === 'roundOver') {
+    if (s.status === 'playing' && g && g.phase === 'roundOver' && humansAtTable >= 2) {
       if (!s.timers.ready) s.timers.ready = Date.now() + turnMs;
     } else {
       delete s.timers.ready;

@@ -57,7 +57,7 @@
   };
   const CONTACT = ['faldik2033', 'seznam.cz'].join('@');
   // stránky, ze kterých se vrací tlačítkem Zpět (nebo klepnutím vedle)
-  const PAGES = ['rules', 'settings', 'app', 'friends', 'players', 'profile', 'account', 'avatar', 'privacy', 'tutintro'];
+  const PAGES = ['rules', 'settings', 'app', 'friends', 'players', 'profile', 'account', 'avatar', 'privacy', 'tutintro', 'solo', 'multi'];
   let nav = [];
   let localStarted = false; // hra proti robotům, kterou hráč opravdu začal
   let tut = { on: false, hidden: false, slide: 0 };
@@ -568,51 +568,76 @@
     return `<span class="av" style="--s:${sz}px;background:${avColor(u.id)}" aria-hidden="true">${esc(ch)}</span>`;
   }
 
+  function langMini() {
+    return `<div class="langmini" role="group" aria-label="${esc(t('settings_lang'))}">${LANGS.map((l) =>
+      `<button class="${prefs.lang === l ? 'on' : ''}" data-act="lang" data-v="${l}" aria-pressed="${prefs.lang === l}" lang="${l === 'pt' ? 'pt-BR' : l}" title="${esc(DICT[l].lang_name)}">${l.toUpperCase()}</button>`).join('')}</div>`;
+  }
+  function bigBtn(act, icon, title, sub, badge, extra) {
+    const v = /\bv-(\S+)/.exec(extra || '');
+    return `<button class="bigbtn ${extra || ''}" data-act="${act}"${v ? ` data-v="${v[1]}"` : ''}><span class="bi">${icon}</span><span class="bt"><b>${esc(title)}</b>${sub ? `<span>${esc(sub)}</span>` : ''}</span>${badge ? `<span class="nb">${badge}</span>` : ''}<span class="chev">›</span></button>`;
+  }
+  const hasLocalGame = () => localStarted && !online() && st && st.phase !== 'gameOver' && st.phase !== 'waiting';
+
+  // ---------- hlavní menu: tři cesty ----------
   function startHTML() {
     const u = net.user;
-    let onl = '';
-    if (!net.available) {
-      onl = `<p class="seghint">${esc(t('online_unavailable'))} <a href="${SITE_URL}" target="_blank" rel="noopener">${SITE_URL.replace('https://', '')}</a></p>`;
-    } else if (!u) {
-      onl = `<div class="loginbox"><p>${esc(t('home_login_lead'))}</p>
-        <button class="btn online" data-act="goonline">${esc(t('home_login'))}</button></div>`;
-    } else {
-      onl = `<button class="mecard" data-act="profile" data-v="${u.id}">
-          ${avatarHTML(u, 48)}<span class="mc-main"><b>${esc(u.name)}</b><span>🏆 ${fmt(u.rating)} · ${esc(t('my_profile'))} ›</span></span></button>
-        ${u.table ? `<button class="btn primary" data-act="jointable" data-v="${esc(u.table)}">${esc(t('continue_table', { code: u.table }))}</button>` : ''}
-        <h3>${esc(t('home_friends'))}</h3>
-        <div class="grid2">
-          <button class="btn ${u.table ? '' : 'primary'}" data-act="create" data-v="1v1">${esc(t('create_1v1'))}</button>
-          <button class="btn" data-act="create" data-v="2v2">${esc(t('create_2v2'))}</button>
-        </div>
-        <form class="joinrow" id="joinForm"><input id="joinCode" maxlength="6" placeholder="${esc(t('join_code'))}" autocomplete="off" aria-label="${esc(t('join_code'))}"><button class="btn" type="submit">${esc(t('join'))}</button></form>
-        ${net.joinErr ? `<p class="formerr">${esc(net.joinErr)}</p>` : ''}
-        <div class="grid2">
-          <button class="btn tile" data-act="friends">👥 ${esc(t('friends'))}${net.requests ? `<span class="nb">${net.requests}</span>` : ''}</button>
-          <button class="btn tile" data-act="players">🔎 ${esc(t('players_title'))}</button>
-        </div>`;
-    }
-    const cont = localStarted && !online() && st && st.phase !== 'gameOver' && st.phase !== 'waiting';
+    const me = u ? `<button class="mechip" data-act="profile" data-v="${u.id}">${avatarHTML(u, 32)}<b>${esc(u.name)}</b><span>🏆 ${fmt(u.rating)}</span></button>` : '';
+    let cont = '';
+    if (u && u.table) cont = `<button class="btn primary contbtn" data-act="jointable" data-v="${esc(u.table)}">▶ ${esc(t('continue_table', { code: u.table }))}</button>`;
+    else if (hasLocalGame()) cont = `<button class="btn primary contbtn" data-act="close">▶ ${esc(t(tut.on ? 'continue_tut' : 'continue_local'))}</button>`;
+    const multiSub = !net.available ? t('online_unavailable_short') : u ? t('menu_multi_sub') : t('menu_multi_sub_login');
     return `
-      ${langButtons()}
-      <div class="hero-cards ${u ? 'small' : ''}" aria-hidden="true">${[{ r: 'K', s: 'S' }, { r: 'A', s: 'H' }, { r: '4', s: 'D' }, { r: '2', s: 'C' }, { r: 'JK', s: null }].map((c, i) => cardFace(c, `--rot:${[-14, -7, 0, 7, 14][i]}deg`)).join('')}</div>
+      <div class="homehead">${me || '<span></span>'}${langMini()}</div>
+      <div class="hero-cards small" aria-hidden="true">${[{ r: 'K', s: 'S' }, { r: 'A', s: 'H' }, { r: '4', s: 'D' }, { r: '2', s: 'C' }, { r: 'JK', s: null }].map((c, i) => cardFace(c, `--rot:${[-14, -7, 0, 7, 14][i]}deg`)).join('')}</div>
       <h2 class="title-xl">${esc(t('title'))}</h2>
-      ${u ? '' : `<p>${esc(t('start_lead'))}</p>`}
-      ${onl}
-      <h3>${esc(t('vs_bots'))}</h3>
-      ${cont ? `<button class="btn" data-act="close">${esc(t(tut.on ? 'continue_tut' : 'continue_local'))}</button>` : ''}
-      ${levelButtons()}
-      <div class="grid2">
-        <button class="btn ${u || cont ? '' : 'primary'}" data-act="new1">${esc(t('start_1v1'))}</button>
-        <button class="btn" data-act="new2">${esc(t('start_2v2'))}</button>
+      ${cont}
+      <div class="bigmenu">
+        ${bigBtn('solo', '🤖', t('menu_solo'), t('menu_solo_sub'))}
+        ${bigBtn('multi', '👥', t('menu_multi'), multiSub, u && net.requests ? net.requests : 0, net.available ? '' : 'off')}
+        ${bigBtn('tutorial', '🎓', t('tut_btn'), t('menu_tut_sub'))}
       </div>
-      <button class="btn tut" data-act="tutorial">🎓 ${esc(t('tut_btn'))}</button>
       <div class="footrow">
         <button class="mini ghost" data-act="settings">⚙️ ${esc(t('settings'))}</button>
         <button class="mini ghost" data-act="rules">📖 ${esc(t('rules'))}</button>
         ${isStandalone() ? '' : `<button class="mini ghost ${installEvt ? 'hl' : ''}" data-act="app">📲 ${esc(t('app_short'))}</button>`}
         <button class="mini ghost" data-act="privacy">🔒 ${esc(t('privacy_short'))}</button>
       </div>`;
+  }
+
+  // ---------- hra proti robotům ----------
+  function soloHTML() {
+    return `<h2>🤖 ${esc(t('menu_solo'))}</h2>
+      ${hasLocalGame() ? `<button class="btn primary contbtn" data-act="close">▶ ${esc(t(tut.on ? 'continue_tut' : 'continue_local'))}</button>` : ''}
+      <h3>${esc(t('settings_level'))}</h3>
+      ${levelButtons()}
+      <h3>${esc(t('new_game'))}</h3>
+      <div class="bigmenu">
+        ${bigBtn('new1', '🙂', t('solo_1v1'), t('solo_1v1_sub'))}
+        ${bigBtn('new2', '🤝', t('solo_2v2'), t('solo_2v2_sub'))}
+      </div>
+      ${back()}`;
+  }
+
+  // ---------- hra s přáteli ----------
+  function multiHTML() {
+    const u = net.user;
+    return `<h2>👥 ${esc(t('menu_multi'))}</h2>
+      ${u.table ? `<button class="btn primary contbtn" data-act="jointable" data-v="${esc(u.table)}">▶ ${esc(t('continue_table', { code: u.table }))}</button>` : ''}
+      <h3>${esc(t('new_table'))}</h3>
+      <div class="bigmenu">
+        ${bigBtn('create', '⚔️', t('multi_1v1'), t('multi_1v1_sub'), 0, 'v-1v1')}
+        ${bigBtn('create', '🤝', t('multi_2v2_bots'), t('multi_2v2_bots_sub'), 0, 'v-2v2bots')}
+        ${bigBtn('create', '👥', t('multi_2v2'), t('multi_2v2_sub'), 0, 'v-2v2')}
+      </div>
+      <p class="seghint">${esc(t('multi_hint'))}</p>
+      <h3>${esc(t('join_title'))}</h3>
+      <form class="joinrow" id="joinForm"><input id="joinCode" maxlength="6" placeholder="${esc(t('join_code'))}" autocomplete="off" aria-label="${esc(t('join_code'))}"><button class="btn" type="submit">${esc(t('join'))}</button></form>
+      ${net.joinErr ? `<p class="formerr">${esc(net.joinErr)}</p>` : ''}
+      <div class="grid2">
+        <button class="btn tile" data-act="friends">👥 ${esc(t('friends'))}${net.requests ? `<span class="nb">${net.requests}</span>` : ''}</button>
+        <button class="btn tile" data-act="players">🏆 ${esc(t('players_title'))}</button>
+      </div>
+      ${back()}`;
   }
 
   function appHTML() {
@@ -661,8 +686,6 @@
         <button class="btn primary" data-act="close">${esc(t('keep_playing'))}</button>
         <button class="btn" data-act="tostart">🏠 ${esc(t('main_menu'))}</button>
         ${tut.on ? `<button class="btn" data-act="tuthint">💡 ${esc(t(tut.hidden ? 'tut_show' : 'tut_hide'))}</button>` : ''}
-        <button class="btn" data-act="new1">${esc(t('new1'))}</button>
-        <button class="btn" data-act="new2">${esc(t('new2'))}</button>
         <button class="btn" data-act="settings">${esc(t('settings'))}</button>
         <button class="btn" data-act="rules">${esc(t('rules'))}</button>
       </div>`;
@@ -1010,6 +1033,8 @@
     else if (overlay === 'avatar' && net.user) html = avatarPageHTML();
     else if (overlay === 'privacy') html = privacyHTML();
     else if (overlay === 'tutintro') html = tutIntroHTML();
+    else if (overlay === 'solo') html = soloHTML();
+    else if (overlay === 'multi' && net.user) html = multiHTML();
     const full = `<div class="sheet" role="dialog" aria-modal="true">${html}</div>`;
     if (el.dataset.html === full) return;
     const keep = {};
@@ -1569,6 +1594,13 @@
       const c = net.joinAfterLogin;
       net.joinAfterLogin = null;
       joinTable(c);
+    } else if (net.afterLogin) {
+      const pg = net.afterLogin;
+      net.afterLogin = null;
+      nav = ['start'];
+      overlay = pg;
+      render();
+      refreshFriends();
     } else {
       goOnline();
     }
@@ -1584,8 +1616,8 @@
     if (overlay && overlay !== name) nav.push(overlay);
     overlay = name;
   }
-  async function createTable(m) {
-    const r = await apiCall('/api/table/create', { mode: m });
+  async function createTable(m, bots) {
+    const r = await apiCall('/api/table/create', bots ? { mode: m, bots, level: prefs.level } : { mode: m });
     if (r.error) { toast(tr(r.error)); return null; }
     joinTable(r.code);
     return r.code;
@@ -1622,6 +1654,13 @@
       case 'rules': openPage('rules'); break;
       case 'app': openPage('app'); break;
       case 'privacy': openPage('privacy'); break;
+      case 'solo': openPage('solo'); break;
+      case 'multi':
+        if (!net.available) { toast(t('online_unavailable_short')); return; }
+        if (!net.user) { net.afterLogin = 'multi'; nav = ['start']; overlay = 'auth'; break; }
+        openPage('multi');
+        refreshMe().then(render);
+        break;
       case 'friends': if (!net.user) { goOnline(); return; } openPage('friends'); refreshFriends(); break;
       case 'players':
         if (!net.user) { goOnline(); return; }
@@ -1735,7 +1774,10 @@
         nav = [];
         overlay = 'start';
         break;
-      case 'create': createTable(v === '2v2' ? '2v2' : '1v1'); return;
+      case 'create':
+        if (v === '2v2bots') createTable('2v2', [1, 3]);
+        else createTable(v === '2v2' ? '2v2' : '1v1');
+        return;
       case 'jointable': joinTable(v); return;
       case 'invite': invite(Number(v)); return;
       case 'invaccept': {

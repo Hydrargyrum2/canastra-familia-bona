@@ -610,3 +610,25 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
 .hc.drop-after .card { box-shadow: 5px 0 0 0 var(--brass); }
 .drag-ghost { position: fixed; z-index: 60; margin: 0; pointer-events: none; transform: rotate(-4deg) scale(1.08); filter: drop-shadow(0 10px 16px rgba(0,0,0,0.5)); transition: none; }
 .sortbtn { margin-left: 4px; padding: 3px 9px; border-radius: 10px; border: 1px solid var(--line); background: rgba(255,255,255,0.06); color: #e6efec; font: inherit; font-size: 11px; letter-spacing: 0.04em; text-transform: none; cursor: pointer; }
+
+/* ---------- jednodušší hlavní menu ---------- */
+.homehead { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+.mechip { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 4px 12px 4px 4px; border-radius: 22px; border: 1px solid rgba(241,195,76,0.45); background: rgba(241,195,76,0.08); color: inherit; cursor: pointer; font: inherit; }
+.mechip b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 130px; font-size: 15px; }
+.mechip span { font-size: 13px; color: var(--brass); white-space: nowrap; }
+.langmini { display: flex; gap: 2px; padding: 2px; border-radius: 10px; background: rgba(255,255,255,0.05); flex: none; }
+.langmini button { padding: 5px 8px; border: 0; border-radius: 8px; background: none; color: var(--muted); font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; }
+.langmini button.on { background: rgba(241,195,76,0.18); color: var(--brass); }
+.contbtn { width: 100%; margin: 6px 0 2px; }
+.bigmenu { display: grid; gap: 10px; margin: 12px 0 6px; }
+.bigbtn { position: relative; display: flex; align-items: center; gap: 14px; width: 100%; padding: 14px 14px; border-radius: 16px; border: 1px solid var(--line); background: rgba(255,255,255,0.06); color: inherit; text-align: left; cursor: pointer; font: inherit; }
+.bigbtn:active { transform: scale(0.985); }
+.bigbtn .bi { font-size: 30px; line-height: 1; width: 40px; text-align: center; flex: none; }
+.bigbtn .bt { flex: 1; display: grid; gap: 2px; min-width: 0; }
+.bigbtn b { font-size: 17px; }
+.bigbtn .bt span { font-size: 13px; color: var(--muted); }
+.bigbtn .chev { font-size: 26px; color: var(--muted); line-height: 1; }
+.bigbtn .nb { position: static; margin-left: -4px; }
+.bigbtn.off { opacity: 0.55; }
+.footrow { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; }
+.footrow .mini { width: 100%; }

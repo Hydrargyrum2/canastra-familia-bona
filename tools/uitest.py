@@ -15,16 +15,16 @@ async def page(b, lang):
     pg.errs = []
     pg.on('pageerror', lambda e: pg.errs.append(str(e)))
     await pg.goto(BASE + '/')
-    await pg.wait_for_selector('[data-act=goonline]')
+    await pg.wait_for_selector('[data-act=multi]')
     return pg
 
 async def register(pg, name):
-    await pg.click('[data-act=goonline]')
+    await pg.click('[data-act=multi]')
     await pg.click('[data-act=authtab][data-v=register]')
     await pg.fill('#authName', name)
     await pg.fill('#authPass', 'heslo123')
     await pg.click('#authForm button[type=submit]')
-    await pg.wait_for_selector('.mecard')
+    await pg.wait_for_selector('[data-act=create][data-v="1v1"]')
 
 async def main():
     tag = ''.join(random.choice(string.ascii_lowercase) for _ in range(4))
@@ -34,15 +34,15 @@ async def main():
         B = await page(b, 'pt-BR')
         await A.screenshot(path=SH + 'home-guest.png')
         # zapomenuté heslo
-        await A.click('[data-act=goonline]')
+        await A.click('[data-act=multi]')
         await A.click('[data-act=forgot]')
         txt = await A.inner_text('#authForm')
         check('faldik2033@seznam.cz' in txt, 'u přihlášení je kontakt pro zapomenuté heslo')
         await A.click('[data-act=tostart]')
         await register(A, 'Filip' + tag)
         await register(B, 'Bia' + tag)
-        await A.screenshot(path=SH + 'home-user.png')
-        check(await A.locator('[data-act=friends]').count() == 1 and await A.locator('[data-act=players]').count() == 1, 'hlavní menu: přátelé a hráči')
+        await A.screenshot(path=SH + 'multi-page.png')
+        check(await A.locator('[data-act=friends]').count() == 1 and await A.locator('[data-act=players]').count() == 1, 'po přihlášení stránka Hra s přáteli: stoly, přátelé, hráči')
         # A najde B a pošle žádost
         await A.click('[data-act=players]')
         await A.fill('#playerSearch', 'Bia' + tag)
@@ -61,9 +61,10 @@ async def main():
         await B.wait_for_selector('[data-act=facc]', state='detached', timeout=6000)
         check(await B.locator(f'.plist .pbtn:has-text("Filip{tag}")').count() == 1, 'žádost přijata, Filip je v přátelích')
         # A: obrázek
-        await A.click('[data-act=back]'); await A.click('[data-act=back]')
-        await A.wait_for_selector('.mecard')
-        await A.click('.mecard')
+        await A.click('[data-act=back]'); await A.click('[data-act=back]'); await A.click('[data-act=back]')
+        await A.wait_for_selector('.mechip')
+        await A.screenshot(path=SH + 'home-user.png')
+        await A.click('.mechip')
         await A.wait_for_selector('.avedit')
         await A.click('.avedit')
         await A.click('[data-act=avpick][data-v="p:jaguar"]')
@@ -78,6 +79,7 @@ async def main():
         await A.screenshot(path=SH + 'profile-self.png', full_page=True)
         # A otevře profil B (přítel), ztlumí ho
         await A.click('[data-act=back]')
+        await A.click('[data-act=multi]')
         await A.click('[data-act=friends]')
         await A.wait_for_selector(f'.pbtn:has-text("Bia{tag}")')
         await A.click(f'.pbtn:has-text("Bia{tag}")')

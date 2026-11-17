@@ -202,7 +202,20 @@ async function main() {
   check(my.user.games === 1 && my.user.losses === 1 && my.user.bgames === 0, 'statistiky proti lidem: 1 hra, 1 prohra');
   const chatMsg = (t1.ws.send(JSON.stringify({ t: 'chat', text: 'ahoj' })), await t1.wait((m) => m.t === 'chat' && m.m.kind === 'msg'));
   check(chatMsg.m.uid === P1.id, 'zpráva v chatu nese id odesílatele (kvůli ztlumení)');
-  [l1, l2, t1, t2].forEach((c) => c.ws.close());
+  console.log('Limit jen mezi lidmi, stůl rovnou s roboty');
+  const c3 = (await post('/api/table/create', { mode: '1v1', bots: [1], level: 'easy' }, P2.token)).data.code;
+  const t3 = connect('/api/table/ws?code=' + c3, P2.token); await t3.opened;
+  const w3 = await t3.wait((m) => m.t === 'state' && m.s.seats.every(Boolean));
+  check(w3.s.seats[1].kind === 'bot' && w3.s.seats[1].level === 'easy', 'stůl 1 na 1 rovnou s robotem');
+  t3.send({ t: 'start' });
+  const p3 = await t3.wait((m) => m.t === 'state' && m.s.status === 'playing');
+  await sleep(300);
+  check(!t3.last('state').s.turnDeadline, 'člověk sám s robotem nemá limit na tah');
+  const c4 = (await post('/api/table/create', { mode: '2v2', bots: [1, 3] }, P1.token)).data.code;
+  const t4 = connect('/api/table/ws?code=' + c4, P1.token); await t4.opened;
+  const w4 = await t4.wait((m) => m.t === 'state');
+  check(w4.s.seats[1].kind === 'bot' && w4.s.seats[3].kind === 'bot' && w4.s.seats[2] === null, '2 na 2: roboti na místech soupeřů, místo pro přítele volné');
+  [l1, l2, t1, t2, t3, t4].forEach((c) => c.ws.close());
   process.exit(failures ? 1 : 0);
 }
 main().catch((e) => { console.error(e); process.exit(1); });
