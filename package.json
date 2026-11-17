@@ -1,0 +1,23 @@
+{
+  "name": "canastra-familia-bona",
+  "version": "1.0.0",
+  "description": "Karetní hra podle rodinných pravidel brazilské kanasty (canastra). Hraje se v prohlížeči, 1 na 1 nebo 2 na 2, zatím proti robotům se třemi obtížnostmi. Čeština, angličtina a portugalština.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Hydrargyrum2/canastra-familia-bona.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Hydrargyrum2/canastra-familia-bona/issues"
+  },
+  "homepage": "https://github.com/Hydrargyrum2/canastra-familia-bona#readme",
+  "devDependencies": {
+    "wrangler": "^4.163.0"
+  }
+}

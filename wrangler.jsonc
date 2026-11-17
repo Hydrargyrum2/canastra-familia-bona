@@ -2,7 +2,26 @@
   "$schema": "./node_modules/wrangler/config-schema.json",
   // Jméno musí odpovídat jménu Workeru v Cloudflare dashboardu.
   "name": "canastra-familia-bona",
+  "main": "src/server/index.js",
   "compatibility_date": "2025-10-01",
-  // Zatím jen statická hra (proti robotům). Server pro online hru přibude později.
-  "assets": { "directory": "./public" }
+  "workers_dev": true,
+  // Hra (stránka) je statický soubor v public/, API běží v Workeru.
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
+  },
+  // Účty, lobby a stoly jsou Durable Objects s SQLite (jde i v bezplatném plánu).
+  "durable_objects": {
+    "bindings": [
+      { "name": "ACCOUNTS", "class_name": "Accounts" },
+      { "name": "LOBBY", "class_name": "Lobby" },
+      { "name": "TABLE", "class_name": "Table" }
+    ]
+  },
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["Accounts", "Lobby", "Table"] }
+  ],
+  "observability": { "enabled": true }
 }
