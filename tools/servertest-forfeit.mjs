@@ -131,7 +131,7 @@ async function main() {
     c.send({ t: 'leave' });
     const l = await c.wait((m) => m.t === 'left');
     const u = await me(A);
-    check(l.forfeit && l.forfeit.rated === false && l.forfeit.delta === 0 && u.rating === 1000 && u.losses === 1, 'hra s robotem: prohra se zapíše, trofeje zůstanou ' + u.rating);
+    check(l.forfeit && l.forfeit.rated === false && l.forfeit.delta === 0 && u.rating === 1000 && u.blosses === 1 && u.games === 0, 'hra s robotem: prohra se zapíše mezi hry s roboty, trofeje zůstanou ' + u.rating);
     c.ws.close();
   }
   process.exit(failures ? 1 : 0);

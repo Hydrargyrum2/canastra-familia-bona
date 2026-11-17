@@ -5,6 +5,7 @@
 import { DurableObject } from 'cloudflare:workers';
 import * as EngNS from '../client/engine.js';
 import * as BotNS from '../client/bot.js';
+import { generateVapid, sendPush } from './webpush.js';
 
 const E = EngNS.default && EngNS.default.M ? EngNS.default : EngNS.M ? EngNS : globalThis.Engine;
 const B = BotNS.default && BotNS.default.step ? BotNS.default : BotNS.step ? BotNS : globalThis.Bot;
@@ -15,6 +16,7 @@ const EMOTES = ['laugh', 'slow', 'sleep', 'luck', 'clown', 'fire', 'joker', 'bla
 const CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 const DISCONNECT_MS = 60_000;
 const BOT_DELAY_MS = 900;
+const TURN_MS = 120_000; // limit na tah; pak za hráče zahraje střední robot
 const PBKDF2_ITER = 20_000;
 
 const M = (k, p) => ({ k, p: p || {} });
@@ -79,34 +81,85 @@ async function api(req, env, url) {
   const p = url.pathname;
   const isPost = req.method === 'POST';
   const body = isPost ? await req.json().catch(() => ({})) : {};
+  const A = accounts(env);
 
   if (p === '/api/ping') return json({ ok: true });
   if (p === '/api/register' && isPost) {
-    const r = await accounts(env).register(body.name, body.password);
+    const r = await A.register(body.name, body.password);
     return r.error ? json(r, 400) : json(r);
   }
   if (p === '/api/login' && isPost) {
-    const r = await accounts(env).login(body.name, body.password);
+    const r = await A.login(body.name, body.password);
     return r.error ? json(r, 400) : json(r);
   }
+  // profilové obrázky jsou veřejné (jako v každé hře), adresa obsahuje verzi, takže se smí dlouho držet v mezipaměti
+  if (p === '/api/avatar') {
+    const img = await A.avatarImage(url.searchParams.get('id'));
+    const m = img && /^data:(image\/(?:webp|jpeg|png));base64,(.+)$/.exec(img);
+    if (!m) return new Response('not found', { status: 404 });
+    const bin = atob(m[2]);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return new Response(bytes, { headers: { 'content-type': m[1], 'cache-control': 'public, max-age=604800, immutable' } });
+  }
+  if (p === '/api/push/key') return json({ key: await A.pushKey() });
 
   const token = tokenOf(req, url);
-  const me = token ? await accounts(env).userByToken(token) : null;
+  const me = token ? await A.userByToken(token) : null;
   if (!me) return fail('not_logged_in', 401);
+  const L = lobby(env);
+  const reply = (r) => (r && r.error ? json(r, 400) : json(r));
+  // pošle zprávu do otevřené aplikace, nebo upozornění, když ji nemá otevřenou
+  const notify = async (userId, msg, type, params, link) => {
+    const n = await L.notify(userId, msg);
+    if (!n) await A.pushTo(userId, type, params, link);
+  };
 
-  if (p === '/api/me') return json({ user: me });
+  if (p === '/api/me') return json(await A.meInfo(me.id));
   if (p === '/api/logout' && isPost) {
-    await accounts(env).logout(token);
+    await A.logout(token);
     return json({ ok: true });
   }
   if (p === '/api/players') {
-    const list = await accounts(env).search(url.searchParams.get('q') || '', 60);
-    const online = await lobby(env).onlineMap();
+    const list = await A.search(url.searchParams.get('q') || '', 60);
+    const online = await L.onlineMap();
     return json({
       players: list.map((u) => ({ ...u, online: !!online[u.id], status: online[u.id] ? online[u.id].status : 'offline', table: online[u.id] ? online[u.id].table : null })),
     });
   }
-  if (p === '/api/leaderboard') return json({ players: await accounts(env).leaderboard(50) });
+  if (p === '/api/leaderboard') return json({ players: await A.leaderboard(50) });
+  if (p === '/api/profile') {
+    const r = await A.profile(me.id, Number(url.searchParams.get('id')));
+    if (!r) return fail('no_such_player', 404);
+    const online = await L.onlineMap();
+    r.status = online[r.user.id] ? online[r.user.id].status : 'offline';
+    return json(r);
+  }
+  if (p === '/api/friends') {
+    const r = await A.friendsOf(me.id);
+    const online = await L.onlineMap();
+    const st = (u) => ({ ...u, status: online[u.id] ? online[u.id].status : 'offline' });
+    return json({ friends: r.friends.map(st), incoming: r.incoming.map(st), outgoing: r.outgoing.map(st) });
+  }
+  if (p === '/api/friends/request' && isPost) {
+    const r = await A.friendRequest(me.id, body.id);
+    if (r.created) await notify(Number(body.id), { t: 'friend_req', from: { id: me.id, name: me.name } }, 'friend_req', { name: me.name }, '/?view=friends');
+    if (r.accepted) await notify(Number(body.id), { t: 'friend_ok', by: { id: me.id, name: me.name } }, 'friend_ok', { name: me.name }, '/?view=friends');
+    return reply(r);
+  }
+  if (p === '/api/friends/answer' && isPost) {
+    const r = await A.friendAnswer(me.id, body.id, !!body.accept);
+    if (r.accepted) await notify(Number(body.id), { t: 'friend_ok', by: { id: me.id, name: me.name } }, 'friend_ok', { name: me.name }, '/?view=friends');
+    return reply(r);
+  }
+  if (p === '/api/friends/remove' && isPost) return reply(await A.friendRemove(me.id, body.id));
+  if (p === '/api/mute' && isPost) return reply(await A.setMute(me.id, body.id, !!body.on));
+  if (p === '/api/profile/avatar' && isPost) return reply(await A.setAvatar(me.id, body));
+  if (p === '/api/profile/name' && isPost) return reply(await A.rename(me.id, body.name));
+  if (p === '/api/profile/password' && isPost) return reply(await A.changePassword(me.id, body.old, body.password));
+  if (p === '/api/profile/delete' && isPost) return reply(await A.deleteAccount(me.id, body.password));
+  if (p === '/api/push/subscribe' && isPost) return reply(await A.pushSubscribe(me.id, body.sub, body.lang));
+  if (p === '/api/push/unsubscribe' && isPost) return reply(await A.pushUnsubscribe(me.id, body.endpoint));
   if (p === '/api/table/create' && isPost) {
     const mode = body.mode === '2v2' ? '2v2' : '1v1';
     for (let i = 0; i < 6; i++) {
@@ -136,17 +189,31 @@ async function api(req, env, url) {
     const h = new Headers(req.headers);
     h.set('x-user-id', String(me.id));
     h.set('x-user-name', encodeURIComponent(me.name));
-    return lobby(env).fetch(new Request(req.url, { headers: h }));
+    return L.fetch(new Request(req.url, { headers: h }));
   }
   if (p === '/api/admin/reset' && isPost) {
     if (!me.admin) return fail('not_admin', 403);
-    const r = await accounts(env).resetPassword(body.name, body.password);
-    return r.error ? json(r, 400) : json(r);
+    return reply(await A.resetPassword(body.name, body.password));
+  }
+  if (p === '/api/admin/avatar' && isPost) {
+    if (!me.admin) return fail('not_admin', 403);
+    return reply(await A.clearAvatar(body.id));
   }
   return fail('not_found', 404);
 }
 
 // ================================================================== Accounts
+const AVATAR_MAX = 70000; // nejdelší data URL obrázku (asi 50 kB)
+const PUSH_SUBJECT = 'mailto:faldik2033@seznam.cz';
+const PUSH_TEXT = {
+  cs: { invite: ['Pozvánka ke hře', '{name} tě zve ke stolu {code}.'], friend_req: ['Žádost o přátelství', '{name} si tě chce přidat do přátel.'], friend_ok: ['Nový přítel', '{name} přijal(a) tvou žádost o přátelství.'] },
+  en: { invite: ['Game invite', '{name} invites you to table {code}.'], friend_req: ['Friend request', '{name} wants to add you as a friend.'], friend_ok: ['New friend', '{name} accepted your friend request.'] },
+  pt: { invite: ['Convite para jogar', '{name} convida você para a mesa {code}.'], friend_req: ['Pedido de amizade', '{name} quer adicionar você como amigo.'], friend_ok: ['Novo amigo', '{name} aceitou seu pedido de amizade.'] },
+};
+const fillText = (s, p) => s.replace(/\{(\w+)\}/g, (_, k) => (p[k] != null ? p[k] : ''));
+const NAME_RE = /^[\p{L}\p{N}_.\- ]{3,20}$/u;
+const cleanName = (n) => String(n || '').trim().replace(/\s+/g, ' ');
+
 export class Accounts extends DurableObject {
   constructor(ctx, env) {
     super(ctx, env);
@@ -158,24 +225,41 @@ export class Accounts extends DurableObject {
       rating INTEGER NOT NULL DEFAULT 1000, games INTEGER NOT NULL DEFAULT 0,
       wins INTEGER NOT NULL DEFAULT 0, losses INTEGER NOT NULL DEFAULT 0,
       admin INTEGER NOT NULL DEFAULT 0, table_code TEXT)`);
+    // games/wins/losses = hry proti lidem (hodnocené); b* = hry, kde hrál aspoň jeden robot
+    for (const col of ['bgames INTEGER NOT NULL DEFAULT 0', 'bwins INTEGER NOT NULL DEFAULT 0', 'blosses INTEGER NOT NULL DEFAULT 0',
+      'avatar TEXT', 'avatar_img TEXT', 'avatar_ver INTEGER NOT NULL DEFAULT 0']) {
+      try { this.sql.exec('ALTER TABLE users ADD COLUMN ' + col); } catch (e) { /* sloupec už existuje */ }
+    }
     this.sql.exec(`CREATE TABLE IF NOT EXISTS sessions (token TEXT PRIMARY KEY, user_id INTEGER NOT NULL, created INTEGER NOT NULL)`);
+    this.sql.exec(`CREATE TABLE IF NOT EXISTS friends (a INTEGER NOT NULL, b INTEGER NOT NULL, status TEXT NOT NULL, created INTEGER NOT NULL, PRIMARY KEY (a, b))`);
+    this.sql.exec(`CREATE TABLE IF NOT EXISTS mutes (user_id INTEGER NOT NULL, muted_id INTEGER NOT NULL, PRIMARY KEY (user_id, muted_id))`);
+    this.sql.exec(`CREATE TABLE IF NOT EXISTS history (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, at INTEGER NOT NULL,
+      mode TEXT, rated INTEGER, result TEXT, delta INTEGER, my_score INTEGER, opp_score INTEGER, partner TEXT, opps TEXT, opp_ids TEXT, code TEXT)`);
+    this.sql.exec(`CREATE INDEX IF NOT EXISTS history_user ON history (user_id, id)`);
+    this.sql.exec(`CREATE TABLE IF NOT EXISTS push_subs (endpoint TEXT PRIMARY KEY, user_id INTEGER NOT NULL, p256dh TEXT NOT NULL, auth TEXT NOT NULL, lang TEXT, created INTEGER NOT NULL)`);
+    this.sql.exec(`CREATE TABLE IF NOT EXISTS kv (k TEXT PRIMARY KEY, v TEXT NOT NULL)`);
   }
   pub(u) {
-    return { id: u.id, name: u.name, rating: u.rating, games: u.games, wins: u.wins, losses: u.losses, admin: !!u.admin, table: u.table_code || null };
+    return {
+      id: u.id, name: u.name, rating: u.rating, games: u.games, wins: u.wins, losses: u.losses,
+      bgames: u.bgames || 0, bwins: u.bwins || 0, blosses: u.blosses || 0,
+      admin: !!u.admin, table: u.table_code || null, avatar: u.avatar || null, av: u.avatar_ver || 0, created: u.created,
+    };
   }
   row(sql, ...args) {
     const r = this.sql.exec(sql, ...args).toArray();
     return r.length ? r[0] : null;
   }
+  user(id) { return this.row('SELECT * FROM users WHERE id = ?', Number(id)); }
   newSession(userId) {
     const token = randomHex(32);
     this.sql.exec('INSERT INTO sessions (token, user_id, created) VALUES (?, ?, ?)', token, userId, Date.now());
     return token;
   }
   async register(name, password) {
-    name = String(name || '').trim().replace(/\s+/g, ' ');
+    name = cleanName(name);
     password = String(password || '');
-    if (!/^[\p{L}\p{N}_.\- ]{3,20}$/u.test(name)) return { error: M('bad_name') };
+    if (!NAME_RE.test(name)) return { error: M('bad_name') };
     if (password.length < 6 || password.length > 100) return { error: M('bad_password') };
     if (this.row('SELECT id FROM users WHERE name_lc = ?', name.toLowerCase())) return { error: M('name_taken') };
     const salt = randomHex(16);
@@ -186,7 +270,7 @@ export class Accounts extends DurableObject {
     return { token: this.newSession(u.id), user: this.pub(u) };
   }
   async login(name, password) {
-    const u = this.row('SELECT * FROM users WHERE name_lc = ?', String(name || '').trim().replace(/\s+/g, ' ').toLowerCase());
+    const u = this.row('SELECT * FROM users WHERE name_lc = ?', cleanName(name).toLowerCase());
     if (!u) return { error: M('bad_login') };
     const hash = await hashPassword(String(password || ''), u.salt);
     if (!safeEqual(hash, u.hash)) return { error: M('bad_login') };
@@ -195,6 +279,15 @@ export class Accounts extends DurableObject {
   userByToken(token) {
     const u = this.row('SELECT u.* FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token = ?', String(token));
     return u ? this.pub(u) : null;
+  }
+  meInfo(userId) {
+    const u = this.user(userId);
+    if (!u) return null;
+    return {
+      user: this.pub(u),
+      mutes: this.sql.exec('SELECT muted_id FROM mutes WHERE user_id = ?', u.id).toArray().map((r) => r.muted_id),
+      requests: this.row("SELECT COUNT(*) AS n FROM friends WHERE b = ? AND status = 'pending'", u.id).n,
+    };
   }
   logout(token) {
     this.sql.exec('DELETE FROM sessions WHERE token = ?', String(token));
@@ -207,6 +300,9 @@ export class Accounts extends DurableObject {
   leaderboard(limit) {
     return this.sql.exec('SELECT * FROM users WHERE games > 0 ORDER BY rating DESC, wins DESC, name_lc LIMIT ?', limit).toArray().map((u) => this.pub(u));
   }
+  usersByIds(ids) {
+    return ids.map((id) => this.user(id)).filter(Boolean).map((u) => this.pub(u));
+  }
   setTable(ids, code) {
     for (const id of ids) this.sql.exec('UPDATE users SET table_code = ? WHERE id = ?', code, id);
     return true;
@@ -215,10 +311,14 @@ export class Accounts extends DurableObject {
     for (const id of ids) this.sql.exec('UPDATE users SET table_code = NULL WHERE id = ? AND table_code = ?', id, code);
     return true;
   }
+
+  // ---------- výsledky a historie ----------
   // players: [{id, team}] komu se hra zapíše, winner: 0 | 1 | -1, rated: jen hry samých lidí,
-  // pool: všichni lidé, kteří hru začali (z nich se počítá průměr trofejí týmů)
-  recordGame(players, winner, rated, pool) {
-    const load = (list) => list.map((p) => ({ ...p, u: this.row('SELECT * FROM users WHERE id = ?', p.id) })).filter((p) => p.u);
+  // pool: všichni lidé, kteří hru začali (z nich se počítá průměr trofejí týmů),
+  // meta: { code, mode, scores: [a, b], seats: [{id, name, bot, team}], left: odchod z rozehrané hry }
+  recordGame(players, winner, rated, pool, meta) {
+    meta = meta || {};
+    const load = (list) => list.map((p) => ({ ...p, u: this.user(p.id) })).filter((p) => p.u);
     const rows = load(players);
     const base = pool && pool.length ? load(pool) : rows;
     const avg = (t) => {
@@ -227,6 +327,8 @@ export class Accounts extends DurableObject {
     };
     const ra = [avg(0), avg(1)];
     const changes = {};
+    const seats = Array.isArray(meta.seats) ? meta.seats : [];
+    const scores = Array.isArray(meta.scores) ? meta.scores : [0, 0];
     for (const p of rows) {
       const won = winner === p.team;
       const lost = winner === 1 - p.team;
@@ -236,21 +338,213 @@ export class Accounts extends DurableObject {
         delta = Math.round(32 * ((won ? 1 : 0) - expected));
       }
       changes[p.id] = delta;
-      this.sql.exec('UPDATE users SET games = games + 1, wins = wins + ?, losses = losses + ?, rating = MAX(0, rating + ?) WHERE id = ?',
-        won ? 1 : 0, lost ? 1 : 0, delta, p.id);
+      if (rated) {
+        this.sql.exec('UPDATE users SET games = games + 1, wins = wins + ?, losses = losses + ?, rating = MAX(0, rating + ?) WHERE id = ?',
+          won ? 1 : 0, lost ? 1 : 0, delta, p.id);
+      } else {
+        this.sql.exec('UPDATE users SET bgames = bgames + 1, bwins = bwins + ?, blosses = blosses + ? WHERE id = ?', won ? 1 : 0, lost ? 1 : 0, p.id);
+      }
+      const partner = seats.find((x) => x.team === p.team && x.id !== p.id);
+      const opps = seats.filter((x) => x.team !== p.team);
+      const result = meta.left ? 'left' : winner === -1 ? 'draw' : won ? 'win' : 'loss';
+      this.sql.exec(`INSERT INTO history (user_id, at, mode, rated, result, delta, my_score, opp_score, partner, opps, opp_ids, code)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        p.id, Date.now(), meta.mode || '1v1', rated ? 1 : 0, result, delta, scores[p.team] || 0, scores[1 - p.team] || 0,
+        partner ? JSON.stringify({ id: partner.id || null, name: partner.name, bot: !!partner.bot }) : null,
+        JSON.stringify(opps.map((x) => ({ id: x.id || null, name: x.name, bot: !!x.bot }))),
+        ',' + opps.filter((x) => x.id).map((x) => x.id).join(',') + ',', meta.code || null);
+      this.sql.exec('DELETE FROM history WHERE user_id = ? AND id NOT IN (SELECT id FROM history WHERE user_id = ? ORDER BY id DESC LIMIT 100)', p.id, p.id);
     }
     return changes;
+  }
+  historyOf(userId, limit) {
+    return this.sql.exec('SELECT * FROM history WHERE user_id = ? ORDER BY id DESC LIMIT ?', userId, limit).toArray().map((h) => ({
+      at: h.at, mode: h.mode, rated: !!h.rated, result: h.result, delta: h.delta, my: h.my_score, opp: h.opp_score,
+      partner: h.partner ? JSON.parse(h.partner) : null, opps: h.opps ? JSON.parse(h.opps) : [],
+    }));
+  }
+
+  // ---------- profil ----------
+  friendState(me, other) {
+    const r = this.row('SELECT * FROM friends WHERE (a = ? AND b = ?) OR (a = ? AND b = ?)', me, other, other, me);
+    if (!r) return 'none';
+    if (r.status === 'ok') return 'friends';
+    return r.a === me ? 'out' : 'in';
+  }
+  profile(viewer, id) {
+    const u = this.user(id);
+    if (!u) return null;
+    const self = viewer === u.id;
+    const h2h = { games: 0, wins: 0, losses: 0 };
+    if (!self) {
+      for (const h of this.sql.exec('SELECT result FROM history WHERE user_id = ? AND opp_ids LIKE ?', viewer, '%,' + u.id + ',%').toArray()) {
+        h2h.games++;
+        if (h.result === 'win') h2h.wins++;
+        else if (h.result === 'loss' || h.result === 'left') h2h.losses++;
+      }
+    }
+    return {
+      user: this.pub(u),
+      friend: self ? 'self' : this.friendState(viewer, u.id),
+      muted: !self && !!this.row('SELECT 1 AS x FROM mutes WHERE user_id = ? AND muted_id = ?', viewer, u.id),
+      h2h,
+      history: this.historyOf(u.id, self ? 30 : 12),
+    };
+  }
+  setAvatar(me, body) {
+    if (body && typeof body.image === 'string') {
+      const img = body.image;
+      if (!/^data:image\/(webp|jpeg|png);base64,[A-Za-z0-9+/=]+$/.test(img) || img.length > AVATAR_MAX) return { error: M('bad_image') };
+      this.sql.exec("UPDATE users SET avatar = 'img', avatar_img = ?, avatar_ver = avatar_ver + 1 WHERE id = ?", img, me);
+    } else {
+      const preset = String((body && body.preset) || '');
+      if (preset && !/^p:[a-z0-9]{1,16}$/.test(preset)) return { error: M('bad_request') };
+      this.sql.exec('UPDATE users SET avatar = ?, avatar_img = NULL, avatar_ver = avatar_ver + 1 WHERE id = ?', preset || null, me);
+    }
+    return { ok: true, user: this.pub(this.user(me)) };
+  }
+  avatarImage(id) {
+    const u = this.row("SELECT avatar_img FROM users WHERE id = ? AND avatar = 'img'", Number(id));
+    return u ? u.avatar_img : null;
+  }
+  clearAvatar(id) {
+    this.sql.exec('UPDATE users SET avatar = NULL, avatar_img = NULL, avatar_ver = avatar_ver + 1 WHERE id = ?', Number(id));
+    return { ok: true };
+  }
+  rename(me, name) {
+    name = cleanName(name);
+    if (!NAME_RE.test(name)) return { error: M('bad_name') };
+    const other = this.row('SELECT id FROM users WHERE name_lc = ?', name.toLowerCase());
+    if (other && other.id !== me) return { error: M('name_taken') };
+    this.sql.exec('UPDATE users SET name = ?, name_lc = ? WHERE id = ?', name, name.toLowerCase(), me);
+    return { ok: true, user: this.pub(this.user(me)) };
+  }
+  async changePassword(me, old, password) {
+    const u = this.user(me);
+    if (!u) return { error: M('bad_login') };
+    if (!safeEqual(await hashPassword(String(old || ''), u.salt), u.hash)) return { error: M('bad_old_password') };
+    password = String(password || '');
+    if (password.length < 6 || password.length > 100) return { error: M('bad_password') };
+    const salt = randomHex(16);
+    this.sql.exec('UPDATE users SET salt = ?, hash = ? WHERE id = ?', salt, await hashPassword(password, salt), me);
+    return { ok: true };
+  }
+  async deleteAccount(me, password) {
+    const u = this.user(me);
+    if (!u) return { error: M('bad_login') };
+    if (!safeEqual(await hashPassword(String(password || ''), u.salt), u.hash)) return { error: M('bad_old_password') };
+    if (u.admin) return { error: M('admin_cannot_delete') };
+    this.sql.exec('DELETE FROM sessions WHERE user_id = ?', me);
+    this.sql.exec('DELETE FROM friends WHERE a = ? OR b = ?', me, me);
+    this.sql.exec('DELETE FROM mutes WHERE user_id = ? OR muted_id = ?', me, me);
+    this.sql.exec('DELETE FROM history WHERE user_id = ?', me);
+    this.sql.exec('DELETE FROM push_subs WHERE user_id = ?', me);
+    this.sql.exec('DELETE FROM users WHERE id = ?', me);
+    return { ok: true };
   }
   async resetPassword(name, password) {
     password = String(password || '');
     if (password.length < 6 || password.length > 100) return { error: M('bad_password') };
-    const u = this.row('SELECT * FROM users WHERE name_lc = ?', String(name || '').trim().toLowerCase());
+    const u = this.row('SELECT * FROM users WHERE name_lc = ?', cleanName(name).toLowerCase());
     if (!u) return { error: M('no_such_player') };
     const salt = randomHex(16);
     const hash = await hashPassword(password, salt);
     this.sql.exec('UPDATE users SET salt = ?, hash = ? WHERE id = ?', salt, hash, u.id);
     this.sql.exec('DELETE FROM sessions WHERE user_id = ?', u.id);
     return { ok: true, name: u.name };
+  }
+
+  // ---------- přátelé a ztlumení ----------
+  friendsOf(me) {
+    const rows = this.sql.exec('SELECT * FROM friends WHERE a = ? OR b = ?', me, me).toArray();
+    const pick = (r) => this.user(r.a === me ? r.b : r.a);
+    const out = { friends: [], incoming: [], outgoing: [] };
+    for (const r of rows) {
+      const u = pick(r);
+      if (!u) continue;
+      if (r.status === 'ok') out.friends.push(this.pub(u));
+      else if (r.b === me) out.incoming.push(this.pub(u));
+      else out.outgoing.push(this.pub(u));
+    }
+    out.friends.sort((x, y) => x.name.localeCompare(y.name));
+    return out;
+  }
+  friendRequest(me, other) {
+    other = Number(other);
+    if (!other || other === me || !this.user(other)) return { error: M('no_such_player') };
+    const st = this.friendState(me, other);
+    if (st === 'friends' || st === 'out') return { status: st };
+    if (st === 'in') {
+      this.sql.exec("UPDATE friends SET status = 'ok' WHERE a = ? AND b = ?", other, me);
+      return { status: 'friends', accepted: true };
+    }
+    this.sql.exec("INSERT INTO friends (a, b, status, created) VALUES (?, ?, 'pending', ?)", me, other, Date.now());
+    return { status: 'out', created: true };
+  }
+  friendAnswer(me, from, accept) {
+    from = Number(from);
+    const r = this.row("SELECT * FROM friends WHERE a = ? AND b = ? AND status = 'pending'", from, me);
+    if (!r) return { status: this.friendState(me, from) };
+    if (accept) this.sql.exec("UPDATE friends SET status = 'ok' WHERE a = ? AND b = ?", from, me);
+    else this.sql.exec('DELETE FROM friends WHERE a = ? AND b = ?', from, me);
+    return { status: accept ? 'friends' : 'none', accepted: !!accept };
+  }
+  friendRemove(me, other) {
+    this.sql.exec('DELETE FROM friends WHERE (a = ? AND b = ?) OR (a = ? AND b = ?)', me, Number(other), Number(other), me);
+    return { status: 'none' };
+  }
+  setMute(me, other, on) {
+    other = Number(other);
+    if (!other || other === me) return { error: M('bad_request') };
+    if (on) this.sql.exec('INSERT OR IGNORE INTO mutes (user_id, muted_id) VALUES (?, ?)', me, other);
+    else this.sql.exec('DELETE FROM mutes WHERE user_id = ? AND muted_id = ?', me, other);
+    return { ok: true, muted: !!on };
+  }
+  isMuted(me, other) {
+    return !!this.row('SELECT 1 AS x FROM mutes WHERE user_id = ? AND muted_id = ?', Number(me), Number(other));
+  }
+
+  // ---------- upozornění (Web Push) ----------
+  async vapid() {
+    const r = this.row("SELECT v FROM kv WHERE k = 'vapid'");
+    if (r) return JSON.parse(r.v);
+    const v = await generateVapid();
+    this.sql.exec("INSERT OR REPLACE INTO kv (k, v) VALUES ('vapid', ?)", JSON.stringify(v));
+    return v;
+  }
+  async pushKey() {
+    return (await this.vapid()).publicKey;
+  }
+  pushSubscribe(me, sub, lang) {
+    if (!sub || typeof sub.endpoint !== 'string' || !/^https:\/\//.test(sub.endpoint) || !sub.keys || !sub.keys.p256dh || !sub.keys.auth) return { error: M('bad_request') };
+    this.sql.exec('INSERT OR REPLACE INTO push_subs (endpoint, user_id, p256dh, auth, lang, created) VALUES (?, ?, ?, ?, ?, ?)',
+      sub.endpoint.slice(0, 1000), me, String(sub.keys.p256dh).slice(0, 200), String(sub.keys.auth).slice(0, 100), ['cs', 'en', 'pt'].includes(lang) ? lang : 'cs', Date.now());
+    return { ok: true };
+  }
+  pushUnsubscribe(me, endpoint) {
+    this.sql.exec('DELETE FROM push_subs WHERE endpoint = ? AND user_id = ?', String(endpoint || ''), me);
+    return { ok: true };
+  }
+  // type: invite | friend_req | friend_ok; p: { name, code }
+  async pushTo(userId, type, p, url) {
+    const subs = this.sql.exec('SELECT * FROM push_subs WHERE user_id = ?', Number(userId)).toArray();
+    if (!subs.length) return 0;
+    const vapid = await this.vapid();
+    let sent = 0;
+    for (const s of subs) {
+      const tx = (PUSH_TEXT[s.lang] || PUSH_TEXT.cs)[type];
+      if (!tx) continue;
+      const payload = { title: fillText(tx[0], p || {}), body: fillText(tx[1], p || {}), url: url || '/', tag: type + ':' + ((p && p.code) || (p && p.name) || '') };
+      try {
+        const status = await sendPush({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, payload, vapid, PUSH_SUBJECT, type === 'invite' ? 3 * 3600 : 86400);
+        if (status === 404 || status === 410) this.sql.exec('DELETE FROM push_subs WHERE endpoint = ?', s.endpoint);
+        else if (status < 300) sent++;
+        else console.warn('push', status, s.endpoint.slice(0, 60));
+      } catch (e) {
+        console.warn('push error', e && e.message);
+      }
+    }
+    return sent;
   }
 }
 
@@ -284,6 +578,12 @@ export class Lobby extends DurableObject {
     }
     return map;
   }
+  // zpráva do otevřené aplikace; vrací počet spojení (0 = hráč nemá aplikaci otevřenou)
+  notify(userId, msg) {
+    const list = this.socketsOf(Number(userId));
+    for (const ws of list) safeSend(ws, msg);
+    return list.length;
+  }
   broadcastPresence() {
     const msg = JSON.stringify({ t: 'presence', online: this.onlineMap() });
     for (const ws of this.ctx.getWebSockets()) {
@@ -304,7 +604,10 @@ export class Lobby extends DurableObject {
       const to = Number(m.to);
       if (!to || to === me.id || typeof m.table !== 'string') return;
       const inv = { id: randomHex(8), from: { id: me.id, name: me.name }, table: m.table.slice(0, 6), mode: m.mode === '2v2' ? '2v2' : '1v1', at: Date.now() };
+      const A = this.env.ACCOUNTS.get(this.env.ACCOUNTS.idFromName('main'));
       const targets = this.socketsOf(to);
+      // kdo si odesílatele ztlumil, pozvánky od něj nedostává
+      if (await A.isMuted(to, me.id)) { safeSend(ws, { t: 'invite_sent', to, online: targets.length > 0 }); return; }
       if (targets.length) {
         for (const t of targets) safeSend(t, { t: 'invite', inv });
       } else {
@@ -312,6 +615,7 @@ export class Lobby extends DurableObject {
         const list = ((await this.ctx.storage.get(key)) || []).filter((i) => i.from.id !== me.id || i.table !== inv.table);
         list.push(inv);
         await this.ctx.storage.put(key, list.slice(-10));
+        try { await A.pushTo(to, 'invite', { name: me.name, code: inv.table }, '/?t=' + inv.table); } catch (e) { console.warn('push invite', e && e.message); }
       }
       safeSend(ws, { t: 'invite_sent', to, online: targets.length > 0 });
     } else if (m.t === 'invite_answer') {
@@ -365,7 +669,10 @@ export class Table extends DurableObject {
     return { code: this.s.code, mode: this.s.mode, status: this.s.status, seats: this.publicSeats() };
   }
   publicSeats() {
-    return this.s.seats.map((x) => (x ? { kind: x.kind, id: x.id || null, name: x.name, level: x.level || null, connected: x.kind === 'bot' ? true : !!x.connected, botControl: !!x.botControl } : null));
+    return this.s.seats.map((x) => (x ? {
+      kind: x.kind, id: x.kind === 'human' ? x.id : null, name: x.name, level: x.level || null,
+      connected: x.kind === 'bot' ? true : !!x.connected, botControl: !!x.botControl, away: !!(x.botControl && x.connected),
+    } : null));
   }
   seatOf(userId) {
     return this.s.seats.findIndex((x) => x && x.kind === 'human' && x.id === userId);
@@ -402,8 +709,8 @@ export class Table extends DurableObject {
     }
     await this.save();
     safeSend(server, { t: 'chatlog', list: this.s.chat });
-    this.broadcast();
     await this.reschedule();
+    this.broadcast();
     return new Response(null, { status: 101, webSocket: client });
   }
   env_accounts() {
@@ -433,8 +740,8 @@ export class Table extends DurableObject {
     this.s.seats[seat].connected = false;
     if (this.s.status === 'playing') this.s.timers['dc' + seat] = Date.now() + (Number(this.env.DC_MS) || DISCONNECT_MS);
     await this.save();
-    this.broadcast();
     await this.reschedule();
+    this.broadcast();
   }
 
   // ---------- zprávy ----------
@@ -496,7 +803,9 @@ export class Table extends DurableObject {
       }
       case 'act': {
         if (s.status !== 'playing' || seat === -1) return;
+        if (s.seats[seat].botControl || s.seats[seat].autoTurn) return err('bot_is_playing');
         const r = this.applyAction(seat, m.a || {});
+        if (r.ok) s.seats[seat].timeouts = 0;
         if (!r.ok) return err(r.error || M('server_error'));
         this.afterGameChange();
         break;
@@ -505,6 +814,18 @@ export class Table extends DurableObject {
         if (s.status !== 'playing' || seat === -1 || s.game.phase !== 'roundOver') return;
         s.ready[seat] = true;
         this.maybeNextRound();
+        break;
+      }
+      case 'back': {
+        // hráč je u stolu, ale robot za něj hrál, protože nestihl tahy
+        if (seat === -1) return;
+        const x = s.seats[seat];
+        if (x.kind !== 'human' || !x.botControl) return;
+        x.botControl = false;
+        x.away = false;
+        x.timeouts = 0;
+        if (!(s.game && s.game.current === seat && x.autoTurn)) x.autoTurn = false;
+        this.sysChat('back', { name: x.name });
         break;
       }
       case 'leave': {
@@ -522,7 +843,7 @@ export class Table extends DurableObject {
         } else if (s.status === 'playing') {
           // odchod z rozehrané hry = prohra; zapíše se hned, robot dohraje za něj
           const team = seat % 2;
-          const changes = await this.env_accounts().recordGame([{ id: x.id, team }], 1 - team, !!s.rated, s.pool);
+          const changes = await this.env_accounts().recordGame([{ id: x.id, team }], 1 - team, !!s.rated, s.pool, this.gameMeta(true));
           forfeit = { rated: !!s.rated, delta: changes[x.id] || 0 };
           s.seats[seat] = { kind: 'bot', name: x.name + ' (robot)', level: 'medium', left: x.id };
           if (s.game) s.game.players[seat].name = s.seats[seat].name;
@@ -547,7 +868,7 @@ export class Table extends DurableObject {
         const now = Date.now();
         if (now - (this.lastChat[user.id] || 0) < 600) return err('chat_slow');
         this.lastChat[user.id] = now;
-        this.pushChat({ kind: 'msg', seat, name: user.name, text, at: now });
+        this.pushChat({ kind: 'msg', seat, uid: user.id, name: user.name, text, at: now });
         await this.save();
         return;
       }
@@ -556,7 +877,7 @@ export class Table extends DurableObject {
         const now = Date.now();
         if (now - (this.lastChat[user.id] || 0) < 600) return err('chat_slow');
         this.lastChat[user.id] = now;
-        this.pushChat({ kind: 'emote', seat, name: user.name, id: m.id, at: now });
+        this.pushChat({ kind: 'emote', seat, uid: user.id, name: user.name, id: m.id, at: now });
         await this.save();
         return;
       }
@@ -564,8 +885,8 @@ export class Table extends DurableObject {
         return;
     }
     await this.save();
-    this.broadcast();
     await this.reschedule();
+    this.broadcast();
   }
 
   pushChat(entry) {
@@ -589,11 +910,23 @@ export class Table extends DurableObject {
     s.lastResult = null;
     s.rated = s.seats.every((x) => x.kind === 'human');
     s.pool = s.seats.map((x, i) => ({ x, i })).filter(({ x }) => x.kind === 'human').map(({ x, i }) => ({ id: x.id, team: i % 2 }));
-    for (const x of s.seats) if (x.kind === 'human') x.botControl = false;
+    for (const x of s.seats) if (x.kind === 'human') { x.botControl = false; x.autoTurn = false; x.away = false; x.timeouts = 0; }
+    delete s.timers.turn;
+    delete s.timers.ready;
+    s.turnSeat = null;
   }
   isBotSeat(i) {
     const x = this.s.seats[i];
-    return x && (x.kind === 'bot' || x.botControl);
+    return x && (x.kind === 'bot' || x.botControl || x.autoTurn);
+  }
+  gameMeta(left) {
+    const s = this.s;
+    const g = s.game;
+    return {
+      code: s.code, mode: s.mode, left: !!left,
+      scores: g ? [g.teams[0].score, g.teams[1].score] : [0, 0],
+      seats: s.seats.map((x, i) => (x ? { id: x.kind === 'human' ? x.id : null, name: x.name, bot: x.kind === 'bot', team: i % 2 } : null)).filter(Boolean),
+    };
   }
   levelOf(i) {
     const x = this.s.seats[i];
@@ -619,6 +952,8 @@ export class Table extends DurableObject {
   afterGameChange() {
     const s = this.s;
     const g = s.game;
+    // tah za hráče, který nestihl limit, končí, jakmile je na řadě někdo jiný
+    s.seats.forEach((x, i) => { if (x && x.autoTurn && (g.current !== i || (g.phase !== 'draw' && g.phase !== 'play'))) x.autoTurn = false; });
     if (g.phase === 'roundOver' || g.phase === 'gameOver') {
       s.ready = {};
       s.seats.forEach((x, i) => { if (this.isBotSeat(i) || !x.connected) s.ready[i] = true; });
@@ -627,7 +962,7 @@ export class Table extends DurableObject {
       s.recorded = true;
       s.status = 'finished';
       const players = s.seats.map((x, i) => ({ x, i })).filter(({ x }) => x.kind === 'human').map(({ x, i }) => ({ id: x.id, team: i % 2 }));
-      s.pendingRecord = { players, winner: g.winner, rated: !!s.rated, pool: s.pool };
+      s.pendingRecord = { players, winner: g.winner, rated: !!s.rated, pool: s.pool, meta: this.gameMeta(false) };
     }
   }
   maybeNextRound() {
@@ -647,7 +982,7 @@ export class Table extends DurableObject {
     if (s.pendingRecord) {
       const pr = s.pendingRecord;
       s.pendingRecord = null;
-      const changes = await this.env_accounts().recordGame(pr.players, pr.winner, pr.rated, pr.pool);
+      const changes = await this.env_accounts().recordGame(pr.players, pr.winner, pr.rated, pr.pool, pr.meta);
       s.lastResult = { winner: pr.winner, rated: pr.rated, changes };
       await this.env_accounts().clearTable(pr.players.map((p) => p.id), s.code);
       await this.save();
@@ -657,6 +992,22 @@ export class Table extends DurableObject {
       s.timers.bot = s.timers.bot || Date.now() + (Number(this.env.BOT_DELAY_MS) || BOT_DELAY_MS);
     } else {
       delete s.timers.bot;
+    }
+    // limit na tah (jen člověk, který hraje sám) a na „Další kolo“
+    const g = s.game;
+    const turnMs = Number(this.env.TURN_MS) || TURN_MS;
+    const live = s.status === 'playing' && g && (g.phase === 'draw' || g.phase === 'play');
+    const cur = live ? s.seats[g.current] : null;
+    if (cur && cur.kind === 'human' && !cur.botControl && !cur.autoTurn) {
+      if (s.turnSeat !== g.current || !s.timers.turn) { s.turnSeat = g.current; s.timers.turn = Date.now() + turnMs; }
+    } else {
+      delete s.timers.turn;
+      s.turnSeat = null;
+    }
+    if (s.status === 'playing' && g && g.phase === 'roundOver') {
+      if (!s.timers.ready) s.timers.ready = Date.now() + turnMs;
+    } else {
+      delete s.timers.ready;
     }
     const due = Object.values(s.timers).filter(Boolean);
     if (due.length) await this.ctx.storage.setAlarm(Math.min(...due));
@@ -680,6 +1031,32 @@ export class Table extends DurableObject {
         changed = true;
       }
     }
+    if (s.timers.turn && s.timers.turn <= now) {
+      delete s.timers.turn;
+      const g = s.game;
+      const x = g ? s.seats[g.current] : null;
+      if (s.status === 'playing' && g && (g.phase === 'draw' || g.phase === 'play') && g.current === s.turnSeat && x && x.kind === 'human' && !x.botControl) {
+        x.timeouts = (x.timeouts || 0) + 1;
+        x.autoTurn = true;
+        if (x.timeouts >= 2) {
+          x.botControl = true;
+          x.away = true;
+          this.sysChat('away', { name: x.name });
+        } else {
+          this.sysChat('timeout', { name: x.name });
+        }
+        changed = true;
+      }
+      s.turnSeat = null;
+    }
+    if (s.timers.ready && s.timers.ready <= now) {
+      delete s.timers.ready;
+      if (s.status === 'playing' && s.game && s.game.phase === 'roundOver') {
+        s.seats.forEach((_, i) => { s.ready[i] = true; });
+        this.maybeNextRound();
+        changed = true;
+      }
+    }
     if (s.timers.bot && s.timers.bot <= now) {
       delete s.timers.bot;
       const g = s.game;
@@ -690,11 +1067,8 @@ export class Table extends DurableObject {
         changed = true;
       }
     }
-    if (changed) {
-      await this.save();
-      this.broadcast();
-    }
     await this.reschedule();
+    if (changed) this.broadcast();
   }
   emergency(g, pi) {
     if (g.phase === 'draw') {
@@ -746,6 +1120,9 @@ export class Table extends DurableObject {
       ready: s.ready,
       rated: !!s.rated,
       lastResult: s.lastResult,
+      turnDeadline: s.timers.turn || null,
+      readyDeadline: s.timers.ready || null,
+      now: Date.now(),
       game: this.gameView(seat),
     };
   }

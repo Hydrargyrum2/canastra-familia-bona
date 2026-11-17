@@ -172,11 +172,11 @@ async function main() {
   check(!leak, 'nikdo nedostal cizí karty ani zálohu tahu');
   check(fin.s.lastResult && fin.s.lastResult.rated === false, 'hra s roboty se nepočítá do trofejí');
   const meA2 = await get('/api/me', TA);
-  check(meA2.data.user.games === 1 && meA2.data.user.rating === 1000, `statistiky Alice: ${meA2.data.user.games} hra, ${meA2.data.user.wins} výher, trofeje ${meA2.data.user.rating}`);
+  check(meA2.data.user.bgames === 1 && meA2.data.user.games === 0 && meA2.data.user.rating === 1000, `statistiky Alice: s roboty ${meA2.data.user.bgames} hra, proti lidem ${meA2.data.user.games}, trofeje ${meA2.data.user.rating}`);
 
-  console.log('Hodnocená hra 1 na 1 (Alice zavře výhrou rychle přes správce není – jen kontrola zápisu)');
+  console.log('Žebříček');
   const lb2 = await get('/api/leaderboard', TA);
-  check(Array.isArray(lb2.data.players) && lb2.data.players.some((p) => p.name === 'Alice' + tag), 'žebříček obsahuje Alici');
+  check(Array.isArray(lb2.data.players) && !lb2.data.players.some((p) => p.name === 'Alice' + tag), 'v žebříčku jsou jen hráči s hrou proti lidem (Alice hrála jen s roboty)');
   const reset = await post('/api/admin/reset', { name: 'Bob' + tag, password: 'nove123' }, TB);
   check(reset.status === 403 || reset.data.ok, 'reset hesla jen pro správce (Bob ' + (reset.status === 403 ? 'není' : 'je') + ' správce)');
 
