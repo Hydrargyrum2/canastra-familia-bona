@@ -135,6 +135,25 @@
     return layoutSeq(nat, hasW || newW.length === 1, hasW ? meld.wildPos : null, prefer);
   }
 
+  // Hromádka přiložením k vlastní vykládce: přikládá se jen samotná vrchní karta (z ruky nic).
+  // Žolík, který už ve vykládce leží, se smí posunout, aby vrchní karta pasovala
+  // (na její místo, nebo z kraje postupky na druhý kraj). Když pasuje i bez posunu, žolík zůstane.
+  function analyzePileAdd(meld, top, prefer) {
+    if (isThree(top) || isWild(top)) return { error: M('pile_no_use') };
+    if (meld.type === 'set') return analyzeAdd(meld, [top], prefer);
+    if (top.s !== meld.key) return { error: M('seq_same_suit') };
+    const hasW = meld.cards.some(isWild);
+    const nat = meld.cards.filter((c) => !isWild(c)).concat([top]);
+    if (!hasW) return layoutSeq(nat, false, null, prefer);
+    if (pos(top) !== meld.wildPos) {
+      const stay = layoutSeq(nat, true, meld.wildPos, prefer);
+      if (!stay.error) return stay;
+    }
+    const lay = layoutSeq(nat, true, null, prefer);
+    if (!lay.error) lay.moved = true;
+    return lay;
+  }
+
   const isCanasta = (m) => m.cards.length >= RULES.canasta;
   const isClean = (m) => !m.cards.some(isWild);
   const hasCanasta = (team) => team.melds.some(isCanasta);
@@ -285,7 +304,7 @@
     if (blocksPile(top)) return M('pile_blocked');
     const p = st.players[pi];
     const team = st.teams[p.team];
-    if (team.melds.some((m) => !analyzeAdd(m, [top]).error)) return null;
+    if (team.melds.some((m) => !analyzePileAdd(m, top).error)) return null;
     if (canFormWith(top, p.hand)) return null;
     return M('pile_no_use');
   }
@@ -340,7 +359,8 @@
     if (meldId != null) {
       meld = team.melds.find((m) => m.id === meldId);
       if (!meld) return { error: M('own_melds_only') };
-      a = analyzeAdd(meld, cards, prefer);
+      if (handCards.length) return { error: M('pile_add_alone') };
+      a = analyzePileAdd(meld, top, prefer);
     } else {
       if (handCards.length < 2) {
         return { error: M('pile_pick_cards') };

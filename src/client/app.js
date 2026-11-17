@@ -1650,9 +1650,10 @@
   function pileVariant(meldId) {
     const ids = Array.from(sel);
     const melds = st.teams[US()].melds;
-    if (meldId != null) return { ids, meldId };
+    // k vykládce se z hromádky přikládá jen samotná vrchní karta
+    if (meldId != null) return { ids: [], meldId };
     if (ids.length >= 2 && !E.checkTakePile(st, ME, ids, null).error) return { ids, meldId: null };
-    for (const m of melds) if (!E.checkTakePile(st, ME, ids, m.id).error) return { ids, meldId: m.id };
+    if (!ids.length) for (const m of melds) if (!E.checkTakePile(st, ME, [], m.id).error) return { ids: [], meldId: m.id };
     return { ids, meldId: null };
   }
   function checkOf(kind, v) {

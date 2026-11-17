@@ -234,6 +234,8 @@
     app_windows: "Klikni na ikonu instalace vpravo v adresním řádku. Případně v nabídce prohlížeče najdi „Aplikace“ nebo „Uložit a sdílet“ a zvol instalaci.",
     app_iphone_t: "iPhone a iPad (Safari)",
     app_installed_toast: "Hotovo, aplikace je nainstalovaná.",
+    pile_add_alone: "K vykládce na stole smíš z hromádky přiložit jen samotnou vrchní kartu, z ruky k ní nic. Zruš výběr karet a klepni na vykládku.",
+    tut_s3: "Na začátku tahu si lízneš kartu z balíčku, nebo vezmeš celou hromádku. Hromádku můžeš vzít jen tehdy, když její vrchní kartu hned vyložíš s kartami z ruky, nebo ji samotnou přiložíš ke své vykládce. Pak vykládáš a nakonec jednu kartu odhodíš.",
     app_iphone: "Otevři hru v Safari (ne uvnitř WhatsAppu, Instagramu apod.). Klepni na ⋯ vedle adresy (u starších iOS na tlačítko Sdílet dole), pak Sdílet, sjeď dolů na „Přidat na plochu“, nech zapnuté „Otevřít jako webovou aplikaci“ a klepni na Přidat.",
     sys_dc_wait: "{name} se odpojil(a). Hra počká, až se znovu připojí.",
     paused_wait: "⏸ Hra stojí. Čeká se, až se {name} znovu připojí.",
@@ -357,7 +359,6 @@
     tut_s2_t: "Vykládky",
     tut_s2: "Postupka jsou aspoň 3 karty stejné barvy za sebou, třeba 5♥ 6♥ 7♥. Pořadí je od čtyřky po eso. Skupinu stejné hodnoty jde udělat jen z králů, es a čtyřek. Dvojka a joker jsou žolíci a v jedné vykládce může být nejvýš jeden.",
     tut_s3_t: "Tah",
-    tut_s3: "Na začátku tahu si lízneš kartu z balíčku, nebo vezmeš celou hromádku. Hromádku můžeš vzít jen tehdy, když její vrchní kartu hned vyložíš s kartami z ruky nebo ji přiložíš ke své vykládce. Pak vykládáš a nakonec jednu kartu odhodíš.",
     tut_s4_t: "Na co si dát pozor",
     tut_s4: "Odhozená černá trojka, dvojka nebo joker hromádku zablokuje. Červené trojky se vyloží samy a dolízneš si za ně. Když máš nad 2 000 bodů, první vykládka v kole musí mít aspoň 150 bodů.",
     tut_s5_t: "Konec kola",
@@ -437,7 +438,7 @@
       </ul>
       <h3>Tah</h3>
       <ul>
-        <li>Lízneš z balíčku, nebo vezmeš celou hromádku. Hromádku jen tak, že její vrchní kartu hned vyložíš s kartami z ruky (klidně i se žolíkem) nebo ji přiložíš ke své vykládce.</li>
+        <li>Lízneš z balíčku, nebo vezmeš celou hromádku. Hromádku jen tak, že její vrchní kartu hned vyložíš s kartami z ruky (klidně i se žolíkem), nebo ji samotnou přiložíš ke své vykládce. K přiložení z ruky nic nepřidáváš, jen žolík, který už ve vykládce leží, se smí posunout, aby karta pasovala.</li>
         <li>Odhozená černá trojka, dvojka nebo joker hromádku zablokuje.</li>
         <li>Červené trojky se samy vyloží a dolízne se za ně karta.</li>
         <li>Zavřeš, když ti nezůstane žádná karta a máš aspoň jednu canastu.</li>
@@ -679,6 +680,8 @@
     app_windows: "Click the install icon on the right of the address bar. Or look for “Apps” or “Save and share” in the browser menu and choose install.",
     app_iphone_t: "iPhone and iPad (Safari)",
     app_installed_toast: "Done, the app is installed.",
+    pile_add_alone: "When adding to a meld on the table, you may only add the top card of the pile by itself, nothing from your hand. Clear your selection and tap the meld.",
+    tut_s3: "Start your turn by drawing from the stock or taking the whole discard pile. You can only take the pile if you immediately meld its top card with cards from your hand, or add the top card alone to one of your melds. Then meld what you want and finally discard one card.",
     app_iphone: "Open the game in Safari (not inside WhatsApp, Instagram etc.). Tap ⋯ next to the address (on older iOS the Share button at the bottom), then Share, scroll down to “Add to Home Screen”, keep “Open as Web App” on and tap Add.",
     sys_dc_wait: "{name} disconnected. The game will wait until they reconnect.",
     paused_wait: "⏸ Game paused. Waiting for {name} to reconnect.",
@@ -802,7 +805,6 @@
     tut_s2_t: "Melds",
     tut_s2: "A run is at least 3 cards of the same suit in a row, like 5♥ 6♥ 7♥. Cards go from four up to ace. Sets of the same rank are only allowed with kings, aces and fours. Twos and jokers are wild, with at most one in each meld.",
     tut_s3_t: "Your turn",
-    tut_s3: "Start your turn by drawing from the stock or taking the whole discard pile. You can only take the pile if you immediately meld its top card with cards from your hand or add it to one of your melds. Then meld what you want and finally discard one card.",
     tut_s4_t: "Watch out",
     tut_s4: "A discarded black three, two or joker blocks the pile. Red threes are laid down automatically and you draw a replacement. Above 2,000 points, your first meld in a round must be worth at least 150.",
     tut_s5_t: "Ending a round",
@@ -882,7 +884,7 @@
       </ul>
       <h3>Your turn</h3>
       <ul>
-        <li>Draw from the stock, or take the whole discard pile. You may take the pile only by melding its top card right away with cards from your hand (a wild card is fine), or by adding it to one of your melds.</li>
+        <li>Draw from the stock, or take the whole discard pile. You may take the pile only by melding its top card right away with cards from your hand (a wild card is fine), or by adding the top card alone to one of your melds. When adding, nothing comes from your hand; only a wild already in that meld may shift so the card fits.</li>
         <li>A discarded black three, two or joker blocks the pile.</li>
         <li>Red threes are laid down automatically and replaced with a new card.</li>
         <li>You go out when you have no cards left and at least one canasta.</li>
@@ -1124,6 +1126,8 @@
     app_windows: "Clique no ícone de instalação à direita da barra de endereço. Ou procure “Apps” ou “Salvar e compartilhar” no menu do navegador e escolha instalar.",
     app_iphone_t: "iPhone e iPad (Safari)",
     app_installed_toast: "Pronto, o aplicativo está instalado.",
+    pile_add_alone: "Para encaixar num jogo da mesa, só a carta de cima do lixo pode ir sozinha, nada da mão. Desmarque as cartas e toque no jogo.",
+    tut_s3: "No começo da vez você compra do monte ou pega o lixo inteiro. Só dá para pegar o lixo se você baixar a carta de cima na hora com cartas da mão, ou encaixar só ela num jogo seu. Depois baixe o que quiser e, no fim, descarte uma carta.",
     app_iphone: "Abra o jogo no Safari (não dentro do WhatsApp, Instagram etc.). Toque em ⋯ ao lado do endereço (em iOS mais antigo, no botão Compartilhar embaixo), depois Compartilhar, role até “Adicionar à Tela de Início”, deixe “Abrir como app web” ligado e toque em Adicionar.",
     sys_dc_wait: "{name} caiu. O jogo vai esperar até ele voltar.",
     paused_wait: "⏸ Jogo pausado. Esperando {name} voltar.",
@@ -1247,7 +1251,6 @@
     tut_s2_t: "Jogos",
     tut_s2: "Uma sequência tem pelo menos 3 cartas do mesmo naipe em ordem, como 5♥ 6♥ 7♥. A ordem vai do quatro ao ás. Trincas de mesmo valor só valem com reis, ases e quatros. O dois e o curinga são coringas, no máximo um por jogo.",
     tut_s3_t: "A jogada",
-    tut_s3: "No começo da vez você compra do monte ou pega o lixo inteiro. Só dá para pegar o lixo se você baixar a carta de cima na hora com cartas da mão ou encaixá-la num jogo seu. Depois baixe o que quiser e, no fim, descarte uma carta.",
     tut_s4_t: "Atenção",
     tut_s4: "Um três preto, dois ou curinga descartado tranca o lixo. Os três vermelhos são baixados sozinhos e você compra outra carta no lugar. Acima de 2.000 pontos, o primeiro jogo da rodada precisa valer pelo menos 150.",
     tut_s5_t: "Fim da rodada",
@@ -1327,7 +1330,7 @@
       </ul>
       <h3>Sua jogada</h3>
       <ul>
-        <li>Compre do monte ou pegue o lixo inteiro. Só dá para pegar o lixo baixando na hora a carta de cima com cartas da mão (pode ser com curinga), ou adicionando-a a um dos seus jogos.</li>
+        <li>Compre do monte ou pegue o lixo inteiro. Só dá para pegar o lixo baixando na hora a carta de cima com cartas da mão (pode ser com curinga), ou encaixando só a carta de cima em um dos seus jogos. Ao encaixar, nada sai da mão; só o curinga que já está nesse jogo pode mudar de lugar para a carta caber.</li>
         <li>Um três preto, dois ou joker descartado trava o lixo.</li>
         <li>Os três vermelhos são baixados automaticamente e você compra outra carta no lugar.</li>
         <li>Você bate quando fica sem cartas e tem pelo menos uma canastra.</li>
