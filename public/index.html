@@ -292,6 +292,7 @@ button.meld { cursor: pointer; }
   font-weight: 700; font-size: 15px;
 }
 .btn.primary { background: var(--brass); color: var(--ink); border-color: var(--brass); }
+.btn.danger { background: rgba(194,55,58,0.18); color: #ffd9d6; border-color: rgba(194,55,58,0.7); }
 .btn:disabled { opacity: 0.38; cursor: default; }
 .wait { flex: 1; min-height: 46px; display: grid; place-items: center; color: var(--muted); font-size: 14px; }
 .dots::after { content: '…'; animation: blink 1.2s steps(4) infinite; }
@@ -1767,7 +1768,14 @@ table.res tr.tot td:nth-child(2) { color: var(--brass); }
     emo_tomato: "Hodit rajče",
     sys_back: "{name} je zpátky u stolu.",
     sys_takeover: "{name} se odpojil, zatím za něj hraje robot.",
-    sys_left: "{name} odešel od stolu, dál za něj hraje robot.",
+    sys_left: "{name} odešel od stolu a má prohru. Dál za něj hraje robot.",
+    leave_ask_title: "Opravdu odejít?",
+    leave_ask_lead: "Odchod z rozehrané hry se počítá jako prohra. Za tebe dohraje robot.",
+    leave_ask_rated: "Hra se počítá do trofejí, takže o ně přijdeš hned.",
+    leave_ask_unrated: "Hra s roboty se do trofejí nepočítá, prohra se ti jen zapíše do statistik.",
+    leave_ask_yes: "Odejít a prohrát",
+    left_forfeit: "Odešel jsi od hry, počítá se ti prohra.",
+    left_forfeit_d: "Odešel jsi od hry, počítá se ti prohra. Trofeje {d}",
     bad_name: "Přezdívka musí mít 3–20 znaků (písmena, čísla, mezera, _ . -).",
     bad_password: "Heslo musí mít aspoň 6 znaků.",
     name_taken: "Tahle přezdívka už je zabraná.",
@@ -2020,7 +2028,14 @@ table.res tr.tot td:nth-child(2) { color: var(--brass); }
     emo_tomato: "Throw a tomato",
     sys_back: "{name} is back at the table.",
     sys_takeover: "{name} disconnected, a bot is playing for them for now.",
-    sys_left: "{name} left the table, a bot keeps playing for them.",
+    sys_left: "{name} left the table and takes the loss. A bot keeps playing for them.",
+    leave_ask_title: "Really leave?",
+    leave_ask_lead: "Leaving a game in progress counts as a loss. A bot will finish it for you.",
+    leave_ask_rated: "This game counts for trophies, so you lose them right away.",
+    leave_ask_unrated: "Games with bots do not count for trophies, the loss only goes into your stats.",
+    leave_ask_yes: "Leave and lose",
+    left_forfeit: "You left the game, it counts as a loss.",
+    left_forfeit_d: "You left the game, it counts as a loss. Trophies {d}",
     bad_name: "Nickname must have 3–20 characters (letters, numbers, space, _ . -).",
     bad_password: "Password must have at least 6 characters.",
     name_taken: "That nickname is already taken.",
@@ -2273,7 +2288,14 @@ table.res tr.tot td:nth-child(2) { color: var(--brass); }
     emo_tomato: "Jogar tomate",
     sys_back: "{name} voltou para a mesa.",
     sys_takeover: "{name} caiu, por enquanto um robô joga por ele.",
-    sys_left: "{name} saiu da mesa, um robô continua jogando por ele.",
+    sys_left: "{name} saiu da mesa e leva a derrota. Um robô continua jogando por ele.",
+    leave_ask_title: "Sair mesmo?",
+    leave_ask_lead: "Sair de uma partida em andamento conta como derrota. Um robô termina por você.",
+    leave_ask_rated: "Esta partida vale troféus, então você os perde na hora.",
+    leave_ask_unrated: "Partidas com robôs não valem troféus, a derrota só entra nas suas estatísticas.",
+    leave_ask_yes: "Sair e perder",
+    left_forfeit: "Você saiu da partida, conta como derrota.",
+    left_forfeit_d: "Você saiu da partida, conta como derrota. Troféus {d}",
     bad_name: "O apelido precisa ter de 3 a 20 caracteres (letras, números, espaço, _ . -).",
     bad_password: "A senha precisa ter pelo menos 6 caracteres.",
     name_taken: "Esse apelido já está em uso.",
@@ -2753,13 +2775,24 @@ table.res tr.tot td:nth-child(2) { color: var(--brass); }
       </div>`;
   }
 
+  function leaveAskHTML() {
+    const rated = net.view && net.view.rated;
+    return `<h2>${esc(t('leave_ask_title'))}</h2>
+      <p>${esc(t('leave_ask_lead'))}</p>
+      <p class="seghint">${esc(t(rated ? 'leave_ask_rated' : 'leave_ask_unrated'))}</p>
+      <div class="stackbtns">
+        <button class="btn primary" data-act="close">${esc(t('keep_playing'))}</button>
+        <button class="btn danger" data-act="leavetable">${esc(t('leave_ask_yes'))}</button>
+      </div>`;
+  }
+
   function menuHTML() {
     if (online()) {
       return `
         <h2>${esc(t('menu'))}</h2>
         <div class="stackbtns">
           <button class="btn primary" data-act="close">${esc(t('keep_playing'))}</button>
-          <button class="btn" data-act="leavetable">${esc(t('leave_table'))}</button>
+          <button class="btn" data-act="${net.view && net.view.status === 'playing' && net.view.me.seat !== -1 ? 'leaveask' : 'leavetable'}">${esc(t('leave_table'))}</button>
           <button class="btn" data-act="settings">${esc(t('settings'))}</button>
           <button class="btn" data-act="rules">${esc(t('rules'))}</button>
         </div>`;
@@ -2920,6 +2953,7 @@ table.res tr.tot td:nth-child(2) { color: var(--brass); }
     let html = '';
     if (overlay === 'start') html = startHTML();
     else if (overlay === 'menu') html = menuHTML();
+    else if (overlay === 'leaveask') html = net.view ? leaveAskHTML() : menuHTML();
     else if (overlay === 'settings') html = settingsHTML();
     else if (overlay === 'rules') html = D().rules_html + `<div class="stackbtns"><button class="btn" data-act="back">${esc(t('back'))}</button></div>`;
     else if (overlay === 'pile') html = pileHTML();
@@ -3223,7 +3257,11 @@ table.res tr.tot td:nth-child(2) { color: var(--brass); }
       else if (m.t === 'chat') onChat(m.m, true);
       else if (m.t === 'error') { toast(tr(m.error)); }
       else if (m.t === 'kicked') { toast(t('kicked')); leaveTable(false); }
-      else if (m.t === 'left') { leaveTable(false); }
+      else if (m.t === 'left') {
+        const f = m.forfeit;
+        if (f) toast(f.rated && f.delta ? t('left_forfeit_d', { d: (f.delta > 0 ? '+' : '') + f.delta }) : t('left_forfeit'));
+        leaveTable(false);
+      }
     };
     ws.onclose = (ev) => {
       if (net.tws !== ws) return;
@@ -3419,6 +3457,7 @@ table.res tr.tot td:nth-child(2) { color: var(--brass); }
     const v = el && el.dataset ? el.dataset.v : null;
     switch (name) {
       case 'menu': prevOverlay = null; overlay = 'menu'; break;
+      case 'leaveask': overlay = 'leaveask'; break;
       case 'rules': prevOverlay = overlay; overlay = 'rules'; break;
       case 'settings': prevOverlay = overlay; overlay = 'settings'; break;
       case 'back': overlay = prevOverlay; prevOverlay = null; break;

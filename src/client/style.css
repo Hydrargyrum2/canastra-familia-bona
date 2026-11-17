@@ -282,6 +282,7 @@ button.meld { cursor: pointer; }
   font-weight: 700; font-size: 15px;
 }
 .btn.primary { background: var(--brass); color: var(--ink); border-color: var(--brass); }
+.btn.danger { background: rgba(194,55,58,0.18); color: #ffd9d6; border-color: rgba(194,55,58,0.7); }
 .btn:disabled { opacity: 0.38; cursor: default; }
 .wait { flex: 1; min-height: 46px; display: grid; place-items: center; color: var(--muted); font-size: 14px; }
 .dots::after { content: '…'; animation: blink 1.2s steps(4) infinite; }

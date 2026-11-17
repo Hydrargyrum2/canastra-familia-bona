@@ -6,6 +6,12 @@ Web: https://canastra-familia-bona.faldik2033.workers.dev
 
 První zaregistrovaný účet je správce (může resetovat zapomenutá hesla).
 
+## Trofeje
+
+- Počítají se jen hry, kde u všech míst sedí lidé (Elo, K = 32, proti průměru soupeřova týmu).
+- Vypadne-li hráči spojení, po minutě za něj hraje robot a výsledek se mu počítá normálně.
+- Odejde-li hráč od rozehrané hry sám, počítá se mu prohra hned při odchodu. Zbylí hráči dohrají s robotem a výsledek dostanou na konci.
+
 ## Struktura
 
 | Cesta | Co tam je |

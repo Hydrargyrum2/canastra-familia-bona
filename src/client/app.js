@@ -424,13 +424,24 @@
       </div>`;
   }
 
+  function leaveAskHTML() {
+    const rated = net.view && net.view.rated;
+    return `<h2>${esc(t('leave_ask_title'))}</h2>
+      <p>${esc(t('leave_ask_lead'))}</p>
+      <p class="seghint">${esc(t(rated ? 'leave_ask_rated' : 'leave_ask_unrated'))}</p>
+      <div class="stackbtns">
+        <button class="btn primary" data-act="close">${esc(t('keep_playing'))}</button>
+        <button class="btn danger" data-act="leavetable">${esc(t('leave_ask_yes'))}</button>
+      </div>`;
+  }
+
   function menuHTML() {
     if (online()) {
       return `
         <h2>${esc(t('menu'))}</h2>
         <div class="stackbtns">
           <button class="btn primary" data-act="close">${esc(t('keep_playing'))}</button>
-          <button class="btn" data-act="leavetable">${esc(t('leave_table'))}</button>
+          <button class="btn" data-act="${net.view && net.view.status === 'playing' && net.view.me.seat !== -1 ? 'leaveask' : 'leavetable'}">${esc(t('leave_table'))}</button>
           <button class="btn" data-act="settings">${esc(t('settings'))}</button>
           <button class="btn" data-act="rules">${esc(t('rules'))}</button>
         </div>`;
@@ -591,6 +602,7 @@
     let html = '';
     if (overlay === 'start') html = startHTML();
     else if (overlay === 'menu') html = menuHTML();
+    else if (overlay === 'leaveask') html = net.view ? leaveAskHTML() : menuHTML();
     else if (overlay === 'settings') html = settingsHTML();
     else if (overlay === 'rules') html = D().rules_html + `<div class="stackbtns"><button class="btn" data-act="back">${esc(t('back'))}</button></div>`;
     else if (overlay === 'pile') html = pileHTML();
@@ -894,7 +906,11 @@
       else if (m.t === 'chat') onChat(m.m, true);
       else if (m.t === 'error') { toast(tr(m.error)); }
       else if (m.t === 'kicked') { toast(t('kicked')); leaveTable(false); }
-      else if (m.t === 'left') { leaveTable(false); }
+      else if (m.t === 'left') {
+        const f = m.forfeit;
+        if (f) toast(f.rated && f.delta ? t('left_forfeit_d', { d: (f.delta > 0 ? '+' : '') + f.delta }) : t('left_forfeit'));
+        leaveTable(false);
+      }
     };
     ws.onclose = (ev) => {
       if (net.tws !== ws) return;
@@ -1090,6 +1106,7 @@
     const v = el && el.dataset ? el.dataset.v : null;
     switch (name) {
       case 'menu': prevOverlay = null; overlay = 'menu'; break;
+      case 'leaveask': overlay = 'leaveask'; break;
       case 'rules': prevOverlay = overlay; overlay = 'rules'; break;
       case 'settings': prevOverlay = overlay; overlay = 'settings'; break;
       case 'back': overlay = prevOverlay; prevOverlay = null; break;

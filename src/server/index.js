@@ -215,11 +215,14 @@ export class Accounts extends DurableObject {
     for (const id of ids) this.sql.exec('UPDATE users SET table_code = NULL WHERE id = ? AND table_code = ?', id, code);
     return true;
   }
-  // players: [{id, team}], winner: 0 | 1 | -1, rated: jen hry samých lidí
-  recordGame(players, winner, rated) {
-    const rows = players.map((p) => ({ ...p, u: this.row('SELECT * FROM users WHERE id = ?', p.id) })).filter((p) => p.u);
+  // players: [{id, team}] komu se hra zapíše, winner: 0 | 1 | -1, rated: jen hry samých lidí,
+  // pool: všichni lidé, kteří hru začali (z nich se počítá průměr trofejí týmů)
+  recordGame(players, winner, rated, pool) {
+    const load = (list) => list.map((p) => ({ ...p, u: this.row('SELECT * FROM users WHERE id = ?', p.id) })).filter((p) => p.u);
+    const rows = load(players);
+    const base = pool && pool.length ? load(pool) : rows;
     const avg = (t) => {
-      const r = rows.filter((p) => p.team === t);
+      const r = base.filter((p) => p.team === t);
       return r.length ? r.reduce((s, p) => s + p.u.rating, 0) / r.length : 1000;
     };
     const ra = [avg(0), avg(1)];
@@ -507,6 +510,7 @@ export class Table extends DurableObject {
       case 'leave': {
         if (seat === -1) return;
         const x = s.seats[seat];
+        let forfeit = null;
         await this.env_accounts().clearTable([x.id], s.code);
         if (s.status === 'waiting') {
           if (x.id === s.host) {
@@ -516,12 +520,25 @@ export class Table extends DurableObject {
             if (next) s.host = next.id;
           } else s.seats[seat] = null;
         } else if (s.status === 'playing') {
+          // odchod z rozehrané hry = prohra; zapíše se hned, robot dohraje za něj
+          const team = seat % 2;
+          const changes = await this.env_accounts().recordGame([{ id: x.id, team }], 1 - team, !!s.rated, s.pool);
+          forfeit = { rated: !!s.rated, delta: changes[x.id] || 0 };
           s.seats[seat] = { kind: 'bot', name: x.name + ' (robot)', level: 'medium', left: x.id };
           if (s.game) s.game.players[seat].name = s.seats[seat].name;
           this.sysChat('left', { name: x.name });
           if (x.id === s.host) { const next = this.humans()[0]; if (next) s.host = next.id; }
+          if (!this.humans().length) {
+            // u stolu už nezůstal nikdo: hru ukončit, ať roboti nehrají sami pro sebe
+            s.status = 'finished';
+            s.recorded = true;
+            s.timers = {};
+          } else if (s.game && s.game.phase === 'roundOver') {
+            s.ready[seat] = true;
+            this.maybeNextRound();
+          }
         }
-        safeSend(ws, { t: 'left' });
+        safeSend(ws, { t: 'left', forfeit });
         break;
       }
       case 'chat': {
@@ -571,6 +588,7 @@ export class Table extends DurableObject {
     s.recorded = false;
     s.lastResult = null;
     s.rated = s.seats.every((x) => x.kind === 'human');
+    s.pool = s.seats.map((x, i) => ({ x, i })).filter(({ x }) => x.kind === 'human').map(({ x, i }) => ({ id: x.id, team: i % 2 }));
     for (const x of s.seats) if (x.kind === 'human') x.botControl = false;
   }
   isBotSeat(i) {
@@ -609,7 +627,7 @@ export class Table extends DurableObject {
       s.recorded = true;
       s.status = 'finished';
       const players = s.seats.map((x, i) => ({ x, i })).filter(({ x }) => x.kind === 'human').map(({ x, i }) => ({ id: x.id, team: i % 2 }));
-      s.pendingRecord = { players, winner: g.winner, rated: !!s.rated };
+      s.pendingRecord = { players, winner: g.winner, rated: !!s.rated, pool: s.pool };
     }
   }
   maybeNextRound() {
@@ -629,7 +647,7 @@ export class Table extends DurableObject {
     if (s.pendingRecord) {
       const pr = s.pendingRecord;
       s.pendingRecord = null;
-      const changes = await this.env_accounts().recordGame(pr.players, pr.winner, pr.rated);
+      const changes = await this.env_accounts().recordGame(pr.players, pr.winner, pr.rated, pr.pool);
       s.lastResult = { winner: pr.winner, rated: pr.rated, changes };
       await this.env_accounts().clearTable(pr.players.map((p) => p.id), s.code);
       await this.save();
