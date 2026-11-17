@@ -15,7 +15,7 @@ const LEVELS = ['easy', 'medium', 'hard'];
 const EMOTES = ['laugh', 'slow', 'sleep', 'luck', 'clown', 'fire', 'joker', 'black3', 'cry', 'cool', 'gg', 'hi', 'tomato'];
 const CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 const DISCONNECT_MS = 60_000;
-const BOT_DELAY_MS = 900;
+const BOT_DELAY_MS = 1300; // robot hraje pomaleji, ať je vidět, jak karty jezdí
 const TURN_MS = 120_000; // limit na tah (jen když hrají aspoň dva lidé); pak za hráče zahraje střední robot
 const PBKDF2_ITER = 20_000;
 

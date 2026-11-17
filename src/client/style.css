@@ -632,3 +632,14 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
 .bigbtn.off { opacity: 0.55; }
 .footrow { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; }
 .footrow .mini { width: 100%; }
+
+/* ---------- červené trojky jako karty ---------- */
+.meld.red3s { border-color: rgba(224,72,75,0.55); background: rgba(194,55,58,0.12); }
+.meld.red3s .mc { background: #c2373a; border-color: #c2373a; color: #fff; font-weight: 700; }
+.meld.red3s.zero .mc { background: var(--felt-deep); border-color: rgba(224,72,75,0.55); color: #ffb3b0; }
+.meld.red3s.zero .card { opacity: 0.75; }
+
+/* ---------- karta v pohybu ---------- */
+.flycard { position: fixed; z-index: 55; pointer-events: none; margin: 0; filter: drop-shadow(0 8px 14px rgba(0,0,0,0.45)); }
+.flycard > .card, .flycard > .hc { display: block; }
+.flycard .card { margin: 0 !important; }

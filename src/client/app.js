@@ -229,6 +229,7 @@
     return `<span class="card ${red ? 'red' : ''}${wild}"${st2} aria-label="${c.r}${s}"><span class="cr">${c.r}<i>${s}</i></span><span class="cs">${s}</span></span>`;
   }
   const backFace = () => '<span class="card back"></span>';
+  const cardWithId = (c) => cardFace(c).replace('<span class="card', `<span data-cid="${c.id}" class="card`);
 
   const online = () => !!net.code;
   const US = () => (st && st.players[ME] ? st.players[ME].team : 0);
@@ -338,23 +339,24 @@
 
   function meldsHTML(ti, targetable) {
     const team = st.teams[ti];
+    const r3pts = E.hasCanasta(team) ? team.red3.length * 100 : 0;
     const red3 = team.red3.length
-      ? `<span class="r3">♥3 × ${team.red3.length}${E.hasCanasta(team) ? '' : esc(t('red3_zero'))}</span>` : '';
+      ? `<div class="meld red3s ${r3pts ? '' : 'zero'}" title="${esc(t('red3_title', { n: team.red3.length, pts: r3pts }))}" aria-label="${esc(t('red3_title', { n: team.red3.length, pts: r3pts }))}">${team.red3.map(cardWithId).join('')}<span class="mc">${r3pts ? '+' + r3pts : '0'}</span></div>` : '';
     const open = E.needsOpen(team) ? `<span class="badge">${esc(t('needs_open', { min: E.RULES.openMin }))}</span>` : '';
     const melds = team.melds.slice().sort((a, b) => (a.type === b.type ? a.id - b.id : a.type === 'set' ? -1 : 1));
     const body = melds.length ? melds.map((m) => {
       const can = E.isCanasta(m);
       const cls = can ? (E.isClean(m) ? 'clean' : 'dirty') : '';
       const label = can ? (E.isClean(m) ? t('clean_can') : t('dirty_can')) : (m.type === 'set' ? t('meld_set') : t('meld_seq'));
-      const inner = E.meldOrder(m).map((c) => cardFace(c)).join('') + `<span class="mc">${m.cards.length}</span>`;
+      const inner = E.meldOrder(m).map(cardWithId).join('') + `<span class="mc">${m.cards.length}</span>`;
       return targetable
         ? `<button class="meld ${cls} target" data-meld="${m.id}" aria-label="${esc(t('add_to', { label, n: m.cards.length }))}">${inner}</button>`
         : `<div class="meld ${cls}" aria-label="${esc(label)}">${inner}</div>`;
-    }).join('') : `<p class="empty">${esc(t('none_yet'))}</p>`;
+    }).join('') : (red3 ? '' : `<p class="empty">${esc(t('none_yet'))}</p>`);
     const mine = ti === US();
     const title = mine ? (mode === '2v2' ? t('melds_ours') : t('melds_mine')) : t('melds_of', { name: teamName(ti) });
-    const head = `<div class="mhead"><span>${esc(title)}</span>${red3}<span class="grow"></span>${open}${mine ? partnerHTML() : ''}</div>`;
-    return `${head}<div class="mrow">${body}</div>`;
+    const head = `<div class="mhead"><span>${esc(title)}</span><span class="grow"></span>${open}${mine ? partnerHTML() : ''}</div>`;
+    return `${head}<div class="mrow">${red3}${body}</div>`;
   }
 
   function centerHTML() {
@@ -369,7 +371,7 @@
         <span class="lbl">${esc(t('stock'))}</span>
       </button>
       <button class="stack ${!pileErr ? 'ready' : ''} ${blocked ? 'blocked' : ''}" data-act="pile" ${mine ? '' : 'disabled'} aria-label="${esc(t('pile'))} ${st.pile.length}">
-        <span class="slot" data-blocked="${esc(t('blocked'))}">${top ? cardFace(top) : '<span class="emptyslot"></span>'}<span class="n">${st.pile.length}</span></span>
+        <span class="slot" data-blocked="${esc(t('blocked'))}">${top ? cardWithId(top) : '<span class="emptyslot"></span>'}<span class="n">${st.pile.length}</span></span>
         <span class="lbl">${esc(t('pile'))}</span>
       </button>
       <div class="side-links">
@@ -1059,6 +1061,7 @@
 
   function render() {
     if (!st) return;
+    const animSnap = captureAnim();
     applyLang();
     for (const id of Array.from(sel)) if (!myHand().some((c) => c.id === id)) sel.delete(id);
     const pileOk = myTurn() && st.phase === 'draw' && !E.pileError(st, ME);
@@ -1077,6 +1080,101 @@
     renderChrome();
     soundEvents();
     tickTimers();
+    playAnim(animSnap);
+  }
+
+  // ---------- pohyb karet ----------
+  // Před překreslením si zapamatuje, kde karty byly; po něm nechá změněné karty přejet na nové místo.
+  let animPrev = null;
+  const reduceMotion = () => { try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) { return false; } };
+  const rectOf = (el) => (el ? el.getBoundingClientRect() : null);
+  function captureAnim() {
+    const hand = new Map();
+    document.querySelectorAll('#hand .hc').forEach((e) => hand.set(Number(e.dataset.card), e.getBoundingClientRect()));
+    const cid = new Map();
+    document.querySelectorAll('#oppMelds [data-cid], #myMelds [data-cid]').forEach((e) => cid.set(Number(e.dataset.cid), e.getBoundingClientRect()));
+    return { hand, cid, pile: rectOf(document.querySelector('#center [data-act=pile] .slot')), stock: rectOf(document.querySelector('#center [data-act=draw] .slot')) };
+  }
+  function stateIds() {
+    const melds = new Set();
+    st.teams.forEach((tm) => { tm.melds.forEach((m) => m.cards.forEach((c) => melds.add(c.id))); tm.red3.forEach((c) => melds.add(c.id)); });
+    const top = st.pile.length ? st.pile[st.pile.length - 1] : null;
+    const last = st.log.length ? st.log[st.log.length - 1] : null;
+    return {
+      key: (online() ? 'o' + net.code : 'l') + ':' + mode + ':' + st.round + ':' + st.phase.replace('play', 'draw'),
+      hand: new Set(myHand().map((c) => c.id)), melds, top: top ? top.id : null, current: st.current,
+      log: JSON.stringify(last) + '#' + st.log.length, last,
+    };
+  }
+  function seatRect(i) {
+    if (i === ME) return rectOf($('#hand'));
+    const el = document.querySelector(`#oppSeat [data-seat="${i}"] .arc, .partner[data-seat="${i}"], [data-seat="${i}"]`);
+    return rectOf(el) || rectOf($('#oppSeat'));
+  }
+  function fly(html, from, to, delay, hideEl) {
+    if (!from || !to || !from.width || !to.width) return;
+    const el = document.createElement('div');
+    el.className = 'flycard';
+    el.style.setProperty('--cw', to.width + 'px');
+    el.innerHTML = html;
+    el.style.left = to.left + 'px';
+    el.style.top = to.top + 'px';
+    document.body.appendChild(el);
+    const sx = from.width / to.width;
+    const dx = from.left + from.width / 2 - (to.left + to.width / 2);
+    const dy = from.top + from.height / 2 - (to.top + to.height / 2);
+    if (hideEl) hideEl.style.visibility = 'hidden';
+    const done = () => { el.remove(); if (hideEl) hideEl.style.visibility = ''; };
+    try {
+      const a = el.animate([
+        { transform: `translate(${dx}px, ${dy}px) scale(${sx}) rotate(-6deg)`, opacity: 0.9 },
+        { transform: 'translate(0, 0) scale(1) rotate(0deg)', opacity: 1 },
+      ], { duration: 460, delay: delay || 0, easing: 'cubic-bezier(.25,.8,.3,1)', fill: 'backwards' });
+      a.onfinish = done;
+      a.oncancel = done;
+    } catch (e) { done(); }
+  }
+  function playAnim(snap) {
+    const prev = animPrev;
+    const now = stateIds();
+    animPrev = now;
+    if (!prev || prev.key !== now.key || reduceMotion() || document.hidden || (drag && drag.active)) return;
+    const pileEl = document.querySelector('#center [data-act=pile] .slot');
+    const stockR = rectOf(document.querySelector('#center [data-act=draw] .slot')) || snap.stock;
+    const handEl = (id) => document.querySelector(`#hand .hc[data-card="${id}"]`);
+    let k = 0;
+    // nové karty ve vykládkách a mezi červenými trojkami
+    for (const id of now.melds) {
+      if (prev.melds.has(id)) continue;
+      const to = document.querySelector(`[data-cid="${id}"]`);
+      if (!to) continue;
+      // červená trojka jde rovnou z balíčku
+      const fromStock = to.closest('.red3s') && !snap.hand.get(id);
+      const from = snap.hand.get(id) || (id === prev.top ? snap.pile : null) || (fromStock ? stockR : null) || seatRect(prev.current);
+      fly(to.outerHTML.replace(/ data-cid="\d+"/, ''), from, to.getBoundingClientRect(), 60 * k++, to);
+    }
+    if (now.log === prev.log || !now.last) return;
+    const L = now.last;
+    const pi = L.p ? L.p.pi : null;
+    const newInHand = [...now.hand].filter((id) => !prev.hand.has(id));
+    if (L.k === 'log_discard' && now.top != null && pileEl) {
+      const topEl = pileEl.querySelector('.card');
+      const from = snap.hand.get(now.top) || seatRect(pi);
+      if (topEl) fly(topEl.outerHTML.replace(/ data-cid="\d+"/, ''), from, topEl.getBoundingClientRect(), 0, topEl);
+    } else if (L.k === 'log_draw' || L.k === 'log_draw_red') {
+      if (pi === ME) {
+        newInHand.forEach((id, i) => { const e = handEl(id); if (e) fly(backFace(), stockR, rectOf(e.querySelector('.card')), 90 * i, e); });
+      } else {
+        fly(backFace(), stockR, seatRect(pi), 0, null);
+      }
+    } else if (L.k === 'log_take_pile') {
+      if (pi === ME) {
+        newInHand.forEach((id, i) => { const e = handEl(id); if (e) fly(e.querySelector('.card').outerHTML, snap.pile, rectOf(e.querySelector('.card')), 120 + 45 * i, e); });
+      } else {
+        const n = Math.min(6, Math.max(1, (L.p.n || 2) - 1));
+        for (let i = 0; i < n; i++) fly(backFace(), snap.pile, seatRect(pi), 120 + 70 * i, null);
+      }
+    }
   }
 
   // ---------- odpočet tahu (online) ----------
@@ -1501,7 +1599,7 @@
     clearTimeout(botTimer);
     if (!st || overlay || online()) return;
     if ((st.phase === 'draw' || st.phase === 'play') && st.players[st.current].isBot) {
-      const base = st.phase === 'draw' ? 650 : 800;
+      const base = st.phase === 'draw' ? 1100 : 1300; // pomaleji, ať je vidět, jak karty jezdí
       botTimer = setTimeout(botTick, base);
     }
   }
