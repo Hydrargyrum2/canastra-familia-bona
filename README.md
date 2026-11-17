@@ -1,6 +1,10 @@
 # Canastra família Bona
 
-Karetní hra podle rodinných pravidel brazilské kanasty (canastra). Hraje se v prohlížeči, 1 na 1 nebo 2 na 2, zatím proti robotům se třemi obtížnostmi. Čeština, angličtina a portugalština.
+Karetní hra podle rodinných pravidel brazilské kanasty (canastra). Hraje se v prohlížeči, 1 na 1 nebo 2 na 2, proti robotům (tři obtížnosti) nebo online s přáteli: účty, pozvánky, chat a emoty, trofeje a žebříček. Čeština, angličtina a portugalština.
+
+Web: https://canastra-familia-bona.faldik2033.workers.dev
+
+První zaregistrovaný účet je správce (může resetovat zapomenutá hesla).
 
 ## Struktura
 
@@ -11,9 +15,13 @@ Karetní hra podle rodinných pravidel brazilské kanasty (canastra). Hraje se v
 | `src/client/bot.js` | Robot (lehký, střední, těžký) |
 | `src/client/i18n.js` | Překlady (cs, en, pt) |
 | `src/client/app.js`, `style.css`, `shell.html` | Rozhraní |
+| `src/server/index.js` | Server: účty, lobby (online stav, pozvánky), stoly (hra, roboti, chat) – Cloudflare Worker + Durable Objects |
+| `wrangler.jsonc` | Nastavení pro Cloudflare |
 | `tools/build.py` | Sestaví `public/index.html` ze zdrojů |
 | `tools/sim.js` | Simulace robot proti robotovi s kontrolou pravidel |
 | `tools/ladder.js` | Porovnání obtížností robotů |
+| `tools/servertest*.mjs` | Testy serveru (spustit proti `npx wrangler dev`) |
+| `tools/e2e.py` | Test ve dvou prohlížečích (Playwright) |
 
 ## Úpravy
 

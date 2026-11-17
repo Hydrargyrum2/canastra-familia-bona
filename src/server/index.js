@@ -18,6 +18,9 @@ const BOT_DELAY_MS = 900;
 const PBKDF2_ITER = 20_000;
 
 const M = (k, p) => ({ k, p: p || {} });
+function safeSend(ws, obj) {
+  try { ws.send(typeof obj === 'string' ? obj : JSON.stringify(obj)); } catch (e) { /* spojení se zavírá */ }
+}
 const json = (data, status = 200) => new Response(JSON.stringify(data), {
   status,
   headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' },
@@ -258,7 +261,7 @@ export class Lobby extends DurableObject {
     server.serializeAttachment({ ...user, status: 'lobby', table: null });
     const pending = ((await this.ctx.storage.get('pending:' + user.id)) || []).filter((i) => Date.now() - i.at < 12 * 3600_000);
     await this.ctx.storage.put('pending:' + user.id, pending);
-    for (const inv of pending) server.send(JSON.stringify({ t: 'invite', inv }));
+    for (const inv of pending) safeSend(server, { t: 'invite', inv });
     this.broadcastPresence();
     return new Response(null, { status: 101, webSocket: client });
   }
@@ -300,24 +303,24 @@ export class Lobby extends DurableObject {
       const inv = { id: randomHex(8), from: { id: me.id, name: me.name }, table: m.table.slice(0, 6), mode: m.mode === '2v2' ? '2v2' : '1v1', at: Date.now() };
       const targets = this.socketsOf(to);
       if (targets.length) {
-        for (const t of targets) t.send(JSON.stringify({ t: 'invite', inv }));
+        for (const t of targets) safeSend(t, { t: 'invite', inv });
       } else {
         const key = 'pending:' + to;
         const list = ((await this.ctx.storage.get(key)) || []).filter((i) => i.from.id !== me.id || i.table !== inv.table);
         list.push(inv);
         await this.ctx.storage.put(key, list.slice(-10));
       }
-      ws.send(JSON.stringify({ t: 'invite_sent', to, online: targets.length > 0 }));
+      safeSend(ws, { t: 'invite_sent', to, online: targets.length > 0 });
     } else if (m.t === 'invite_answer') {
       const key = 'pending:' + me.id;
       const list = (await this.ctx.storage.get(key)) || [];
       await this.ctx.storage.put(key, list.filter((i) => i.id !== m.id));
       const from = Number(m.from);
       for (const t of this.socketsOf(from)) {
-        t.send(JSON.stringify({ t: 'invite_answer', by: { id: me.id, name: me.name }, accept: !!m.accept, table: String(m.table || '').slice(0, 6) }));
+        safeSend(t, { t: 'invite_answer', by: { id: me.id, name: me.name }, accept: !!m.accept, table: String(m.table || '').slice(0, 6) });
       }
     } else if (m.t === 'ping') {
-      ws.send(JSON.stringify({ t: 'pong' }));
+      safeSend(ws, { t: 'pong' });
     }
   }
   async webSocketClose(ws) {
@@ -395,7 +398,7 @@ export class Table extends DurableObject {
       delete this.s.timers['dc' + seat];
     }
     await this.save();
-    server.send(JSON.stringify({ t: 'chatlog', list: this.s.chat }));
+    safeSend(server, { t: 'chatlog', list: this.s.chat });
     this.broadcast();
     await this.reschedule();
     return new Response(null, { status: 101, webSocket: client });
@@ -439,7 +442,7 @@ export class Table extends DurableObject {
     if (!user || !this.s) return;
     const seat = this.seatOf(user.id);
     const isHost = this.s.host === user.id;
-    const err = (k, p) => ws.send(JSON.stringify({ t: 'error', error: typeof k === 'object' ? k : M(k, p) }));
+    const err = (k, p) => safeSend(ws, { t: 'error', error: typeof k === 'object' ? k : M(k, p) });
     const s = this.s;
 
     switch (m.t) {
@@ -468,7 +471,7 @@ export class Table extends DurableObject {
         if (!x || (x.kind === 'human' && x.id === s.host)) return;
         if (x.kind === 'human') {
           await this.env_accounts().clearTable([x.id], s.code);
-          for (const k of this.socketsOf(x.id)) k.send(JSON.stringify({ t: 'kicked' }));
+          for (const k of this.socketsOf(x.id)) safeSend(k, { t: 'kicked' });
         }
         s.seats[at] = null;
         break;
@@ -518,7 +521,7 @@ export class Table extends DurableObject {
           this.sysChat('left', { name: x.name });
           if (x.id === s.host) { const next = this.humans()[0]; if (next) s.host = next.id; }
         }
-        ws.send(JSON.stringify({ t: 'left' }));
+        safeSend(ws, { t: 'left' });
         break;
       }
       case 'chat': {
@@ -732,7 +735,7 @@ export class Table extends DurableObject {
     for (const ws of this.ctx.getWebSockets()) {
       const a = ws.deserializeAttachment();
       if (!a) continue;
-      try { ws.send(JSON.stringify({ t: 'state', s: this.viewFor(a.id) })); } catch (e) { /* zavřený */ }
+      try { safeSend(ws, { t: 'state', s: this.viewFor(a.id) }); } catch (e) { /* zavřený */ }
     }
   }
 }
