@@ -81,9 +81,10 @@
     }
     if (gaps === 0) {
       // Žolík jde na konec postupky; pod čtyřku ani nad eso nejde. Když jdou oba konce, hráč si vybere.
+      // Plná postupka 4 až eso: žolík se prostě přidá na konec (za eso).
       const canLow = min > 0;
       const canHigh = max < ORDER.length - 1;
-      if (!canLow && !canHigh) return { error: M('seq_full') };
+      if (!canLow && !canHigh) return { wildPos: ORDER.length };
       let wp;
       if (prefer === 'low' && canLow) wp = min - 1;
       else if (prefer === 'high' && canHigh) wp = max + 1;

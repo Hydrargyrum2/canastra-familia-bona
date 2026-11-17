@@ -469,7 +469,7 @@
         <li>Postupky aspoň 3 karet stejné barvy, třeba 5♥ 6♥ 7♥.</li>
         <li>Skupiny stejné hodnoty jen z králů, es a čtyřek.</li>
         <li>Žolíci jsou dvojky a jokery, v jedné vykládce nejvýš jeden.</li>
-        <li>Žolíka v postupce můžeš nahradit kartou, kterou zastupuje (z ruky i z hromádky). Žolík se pak posune jinam ve stejné postupce a ty si vybereš, jestli dolů, nebo nahoru. Pod čtyřku ani nad eso nejde a do jiné vykládky ho přesunout nejde.</li>
+        <li>Žolíka v postupce můžeš nahradit kartou, kterou zastupuje (z ruky i z hromádky). Žolík se pak posune jinam ve stejné postupce a ty si vybereš, jestli dolů, nebo nahoru. Pod čtyřku ani nad eso nejde a do jiné vykládky ho přesunout nejde. Když je postupka od čtyřky po eso plná, žolík se dá na konec.</li>
         <li>Žolík z kraje postupky se smí posunout do mezery, když tím přikládaná karta zapadne (z ruky i z hromádky). Třeba 7♦ 8♦ 2♦ (jako 9♦) a přiložíš 5♦: dvojka se posune na místo 6♦.</li>
         <li>Canasta má 7 a víc karet. Čistá je bez žolíka.</li>
         <li>Nad 2 000 bodů musí první vyložení v kole dát aspoň 150 bodů.</li>
@@ -959,7 +959,7 @@
         <li>Runs of at least 3 cards in one suit, like 5♥ 6♥ 7♥.</li>
         <li>Sets of the same rank only for kings, aces and fours.</li>
         <li>Twos and jokers are wild, at most one per meld.</li>
-        <li>You can replace a wild card in a run with the card it stands for (from your hand or the pile). The wild card then moves to another spot in the same run, and you choose whether it goes to the bottom or the top. It can never go below 4 or above ace, and never to a different meld.</li>
+        <li>You can replace a wild card in a run with the card it stands for (from your hand or the pile). The wild card then moves to another spot in the same run, and you choose whether it goes to the bottom or the top. It can never go below 4 or above ace, and never to a different meld. If the run is complete from 4 to ace, the wild card goes at the end.</li>
         <li>A wild card at the end of a run may move into a gap so that the card you add fits (from your hand or the pile). For example 7♦ 8♦ 2♦ (as 9♦) plus 5♦: the two moves to the 6♦ spot.</li>
         <li>A canasta has 7 or more cards. A clean canasta has no wild card.</li>
         <li>Above 2,000 points your first meld of a round must be worth at least 150.</li>
@@ -1449,7 +1449,7 @@
         <li>Sequências de pelo menos 3 cartas do mesmo naipe, como 5♥ 6♥ 7♥.</li>
         <li>Trincas do mesmo valor só de reis, ases e quatros.</li>
         <li>Dois e jokers são curingas, no máximo um por jogo.</li>
-        <li>Você pode trocar o curinga de uma sequência pela carta que ele representa (da mão ou do lixo). O curinga então muda de lugar na mesma sequência, e você escolhe se vai para baixo ou para cima. Nunca abaixo do 4 nem acima do ás, e nunca para outro jogo.</li>
+        <li>Você pode trocar o curinga de uma sequência pela carta que ele representa (da mão ou do lixo). O curinga então muda de lugar na mesma sequência, e você escolhe se vai para baixo ou para cima. Nunca abaixo do 4 nem acima do ás, e nunca para outro jogo. Se a sequência estiver completa do 4 ao ás, o curinga vai para o fim.</li>
         <li>Um curinga na ponta de uma sequência pode ir para um buraco para a carta que você junta encaixar (da mão ou do lixo). Por exemplo 7♦ 8♦ 2♦ (como 9♦) mais 5♦: o dois vai para o lugar do 6♦.</li>
         <li>A canastra tem 7 cartas ou mais. A limpa não tem curinga.</li>
         <li>Acima de 2.000 pontos, a primeira baixada da rodada precisa valer pelo menos 150.</li>
