@@ -1450,7 +1450,7 @@
     const who = m.uid && net.user && m.uid !== net.user.id ? `<button class="cname" data-act="profile" data-v="${m.uid}">${esc(m.name)}</button>` : `<b>${esc(m.name)}</b>`;
     if (m.kind === 'emote') {
       const x = EMOTES.find((e) => e.id === m.id);
-      return `<li class="${mine ? 'mine' : ''}">${who} <span class="big">${x ? x.e : ''}</span> ${esc(t('emo_' + m.id))}</li>`;
+      return `<li class="${mine ? 'mine' : ''}">${who} <span class="big" title="${esc(t('emo_' + m.id))}">${x ? x.e : ''}</span></li>`;
     }
     return `<li class="${mine ? 'mine' : ''}">${who} ${esc(m.text)}</li>`;
   }
