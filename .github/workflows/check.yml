@@ -1,0 +1,13 @@
+name: site-check
+on: push
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          for u in / /pravidla/ /api/me /sw.js; do
+            curl -s -o /dev/null -w "$u %{http_code} %{time_total}s ip=%{remote_ip}\n" --max-time 25 "https://canastra-familia-bona.faldik2033.workers.dev$u" || echo "$u FAIL"
+          done
+          curl -sI --max-time 20 https://canastra-familia-bona.faldik2033.workers.dev/ | head -20
+          dig +short canastra-familia-bona.faldik2033.workers.dev A
+          dig +short canastra-familia-bona.faldik2033.workers.dev AAAA
