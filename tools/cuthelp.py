@@ -6,6 +6,9 @@ async def pass_cut(*pages, timeout=20, frac=0.24):
     while asyncio.get_event_loop().time() < end:
         done = 0
         for pg in pages:
+            if await pg.locator('#overlay.show .contbtn[data-act=close]').count():  # po načtení menu: pokračovat v rozehrané hře
+                await pg.locator('#overlay.show .contbtn[data-act=close]').click()
+                continue
             if await pg.locator('#cutDeck').count():
                 box = await pg.locator('#cutDeck').bounding_box()
                 await pg.mouse.click(box['x'] + box['width'] / 2, box['y'] + box['height'] * (1 - frac))

@@ -2549,8 +2549,8 @@
       mode = saved.mode || '1v1';
       localStarted = true;
       if (saved.tut && saved.tut.on) tut = { on: true, hidden: !!saved.tut.hidden, slide: 0 };
-      overlay = st.phase === 'roundOver' || st.phase === 'gameOver' ? 'round' : null;
-      if (overlay === 'round') roundShown = st.phase + ':' + st.round;
+      // po otevření vždy nejdřív menu; rozehraná hra čeká pod „Pokračovat ve hře“
+      overlay = 'start';
     } else {
       newMatch('1v1');
       overlay = 'start';
