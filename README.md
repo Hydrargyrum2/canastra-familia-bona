@@ -4,12 +4,14 @@ Karetní hra podle rodinných pravidel brazilské kanasty (canastra). Hraje se v
 
 Web: https://canastra-familia-bona.faldik2033.workers.dev
 
+Pravidla: [česky](https://canastra-familia-bona.faldik2033.workers.dev/pravidla/) · [English](https://canastra-familia-bona.faldik2033.workers.dev/rules/) · [português](https://canastra-familia-bona.faldik2033.workers.dev/regras/)
+
 První zaregistrovaný účet je správce (může resetovat zapomenutá hesla).
 
 ## Trofeje
 
 - Počítají se jen hry, kde u všech míst sedí lidé (Elo, K = 32, proti průměru soupeřova týmu).
-- Vypadne-li hráči spojení, po minutě za něj hraje robot a výsledek se mu počítá normálně.
+- Vypadne-li hráči spojení, hra počká, až se vrátí (robot za lidi nehraje).
 - Odejde-li hráč od rozehrané hry sám, počítá se mu prohra hned při odchodu. Zbylí hráči dohrají s robotem a výsledek dostanou na konci.
 
 ## Co hra umí
@@ -37,7 +39,9 @@ První zaregistrovaný účet je správce (může resetovat zapomenutá hesla).
 | `src/server/webpush.js` | Šifrování a podpis upozornění (Web Push) |
 | `public/music/` | Hudba (monume, AtlasAudio, Aurec – Pixabay) |
 | `wrangler.jsonc` | Nastavení pro Cloudflare |
-| `tools/build.py` | Sestaví `public/index.html` ze zdrojů |
+| `tools/build.py` | Sestaví `public/index.html` ze zdrojů a spustí `tools/seo.js` |
+| `tools/seo.js` | Statické stránky s pravidly pro vyhledávače (`/pravidla/`, `/rules/`, `/regras/`) a `sitemap.xml` |
+| `tools/arena.js` | Turnaje robotů (ladění obtížností), starý robot pro srovnání v `tools/bots/` |
 | `tools/sim.js` | Simulace robot proti robotovi s kontrolou pravidel |
 | `tools/ladder.js` | Porovnání obtížností robotů |
 | `tools/servertest*.mjs` | Testy serveru (spustit proti `npx wrangler dev`) |

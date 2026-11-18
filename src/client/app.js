@@ -726,7 +726,7 @@
       </div>
       <div class="footrow">
         <button class="mini ghost" data-act="settings">⚙️ ${esc(t('settings'))}</button>
-        <button class="mini ghost" data-act="rules">📖 ${esc(t('rules'))}</button>
+        <a class="mini ghost" href="/${{ cs: 'pravidla', en: 'rules', pt: 'regras' }[prefs.lang] || 'pravidla'}/" data-act="rules">📖 ${esc(t('rules'))}</a>
         ${isStandalone() ? '' : `<button class="mini ghost ${installEvt ? 'hl' : ''}" data-act="app">📲 ${esc(t('app_short'))}</button>`}
         <button class="mini ghost" data-act="privacy">🔒 ${esc(t('privacy_short'))}</button>
       </div>`;
@@ -2221,6 +2221,7 @@
     const a = ev.target.closest('[data-act]');
     if (a) {
       if (a.disabled) return;
+      if (a.tagName === 'A' && !ev.ctrlKey && !ev.metaKey) ev.preventDefault();
       act(a.dataset.act, a);
       return;
     }

@@ -692,3 +692,4 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
 .zoom .zb:disabled { opacity: .35; cursor: default; }
 .zoom .zi { font-size: 11px; opacity: .8; }
 .meld { padding: calc(6px * var(--mz, 1)) calc(8px * var(--mz, 1)) calc(6px * var(--mz, 1)) calc(6px * var(--mz, 1)); }
+a.mini { text-decoration: none; display: inline-flex; align-items: center; }

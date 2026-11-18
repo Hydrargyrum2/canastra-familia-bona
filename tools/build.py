@@ -8,3 +8,5 @@ for tag, f in [('/*CSS*/', 'style.css'), ('/*ENGINE*/', 'engine.js'), ('/*BOT*/'
 out = root / 'public' / 'index.html'
 out.write_text(html, encoding='utf-8')
 print(out, len(html), 'bytes')
+import subprocess
+subprocess.run(['node', str(root / 'tools' / 'seo.js')], check=True)

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Canastra família Bona</title>
+<title>Canastra família Bona – brazilská kanasta online zdarma</title>
 <meta name="theme-color" content="#0d3833">
 <meta name="description" content="Canastra família Bona – brazilská kanasta (canastra) podle rodinných pravidel. Hraj zdarma proti robotům nebo online s přáteli, 1 na 1 i 2 na 2, česky, anglicky i portugalsky.">
 <link rel="canonical" href="https://canastra-familia-bona.faldik2033.workers.dev/">
@@ -17,6 +17,7 @@
 <meta property="og:image:height" content="630">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="google-site-verification" content="t6-P9768WqMx3Ig6SXCpQxsAechWLeMQ8EliiAcYcZc">
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"WebApplication","name":"Canastra família Bona","alternateName":["Brazilská kanasta online","Canastra online"],"url":"https://canastra-familia-bona.faldik2033.workers.dev/","applicationCategory":"GameApplication","genre":"Karetní hra","operatingSystem":"Web, Android, iOS, Windows","inLanguage":["cs","en","pt-BR"],"isAccessibleForFree":true,"offers":{"@type":"Offer","price":"0","priceCurrency":"CZK"},"image":"https://canastra-familia-bona.faldik2033.workers.dev/og.png","description":"Brazilská kanasta (canastra) podle rodinných pravidel. Hraj zdarma proti robotům nebo online s přáteli, 1 na 1 i 2 na 2."}</script>
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="icon" href="/icons/icon.svg" type="image/svg+xml">
 <link rel="icon" href="/icons/favicon-32.png" sizes="32x32" type="image/png">
@@ -722,11 +723,12 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
 .zoom .zb:disabled { opacity: .35; cursor: default; }
 .zoom .zi { font-size: 11px; opacity: .8; }
 .meld { padding: calc(6px * var(--mz, 1)) calc(8px * var(--mz, 1)) calc(6px * var(--mz, 1)) calc(6px * var(--mz, 1)); }
+a.mini { text-decoration: none; display: inline-flex; align-items: center; }
 
 </style>
 </head>
 <body>
-<noscript><p style="padding:20px;color:#fbf5e6;font-family:sans-serif">Canastra família Bona je brazilská kanasta (canastra) podle rodinných pravidel – hraj zdarma proti robotům nebo online s přáteli. Pro hru zapni JavaScript.</p></noscript>
+<noscript><div style="padding:20px;color:#fbf5e6;font-family:sans-serif"><h1>Canastra família Bona – brazilská kanasta online</h1><p>Brazilská kanasta (canastra) podle rodinných pravidel. Hraj zdarma proti robotům ve třech obtížnostech nebo online s přáteli, 1 na 1 i 2 na 2, česky, anglicky i portugalsky. Pro hru zapni JavaScript.</p><p><a href="/pravidla/" style="color:#f1c34c">Pravidla brazilské kanasty</a> · <a href="/rules/" style="color:#f1c34c">Canasta rules</a> · <a href="/regras/" style="color:#f1c34c">Regras da canastra</a></p></div></noscript>
 <div id="app">
   <header id="score"></header>
   <main id="room">
@@ -4480,7 +4482,7 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
       </div>
       <div class="footrow">
         <button class="mini ghost" data-act="settings">⚙️ ${esc(t('settings'))}</button>
-        <button class="mini ghost" data-act="rules">📖 ${esc(t('rules'))}</button>
+        <a class="mini ghost" href="/${{ cs: 'pravidla', en: 'rules', pt: 'regras' }[prefs.lang] || 'pravidla'}/" data-act="rules">📖 ${esc(t('rules'))}</a>
         ${isStandalone() ? '' : `<button class="mini ghost ${installEvt ? 'hl' : ''}" data-act="app">📲 ${esc(t('app_short'))}</button>`}
         <button class="mini ghost" data-act="privacy">🔒 ${esc(t('privacy_short'))}</button>
       </div>`;
@@ -5975,6 +5977,7 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
     const a = ev.target.closest('[data-act]');
     if (a) {
       if (a.disabled) return;
+      if (a.tagName === 'A' && !ev.ctrlKey && !ev.metaKey) ev.preventDefault();
       act(a.dataset.act, a);
       return;
     }
