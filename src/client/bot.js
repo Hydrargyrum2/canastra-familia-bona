@@ -602,41 +602,64 @@
     }
     return teamEstimate(c, team) - teamEstimate(c, 1 - team);
   }
-  // options: [{ key, run(c) -> bool }]; vrátí klíč nejlepší možnosti
-  function search(st, pi, options, cfg) {
-    if (options.length < 2) return options.length ? options[0].key : null;
+  // Hodnotitel možností po vzorcích (rozdáních). Lze ho pouštět po kouscích (trenér v pozadí).
+  function evaluator(st, pi, options, cfg) {
     const team = st.players[pi].team;
-    const sum = options.map(() => 0), cnt = options.map(() => 0), bad = options.map(() => false);
-    const t0 = Date.now();
+    const n = options.length;
+    const sum = new Array(n).fill(0), cnt = new Array(n).fill(0), wins = new Array(n).fill(0), bad = new Array(n).fill(false);
+    const rows = [];
     const base = Math.floor(Math.random() * 1e9);
+    let samples = 0;
+    return {
+      get samples() { return samples; },
+      step() {
+        const seed = base + samples * 7919;
+        const vals = [];
+        for (let o = 0; o < n; o++) {
+          if (bad[o]) continue;
+          // stejné rozdání i stejné náhody pro všechny možnosti, ať se porovnávají férově
+          const v = withRng(seeded(seed), () => {
+            const c = determinize(st, pi, seeded(seed ^ 0x9e3779b9));
+            if (!options[o].run(c)) return null;
+            return rollout(c, team);
+          });
+          if (v == null) { bad[o] = true; continue; }
+          vals.push([o, v - (options[o].penalty || 0)]);
+        }
+        samples++;
+        if (!vals.length) return;
+        const top = Math.max(...vals.map((x) => x[1]));
+        const winners = vals.filter((x) => x[1] === top);
+        for (const [o, v] of vals) { sum[o] += v; cnt[o]++; }
+        for (const [o] of winners) wins[o] += 1 / winners.length;
+        rows.push(new Map(vals));
+      },
+      result() {
+        const out = options.map((op, o) => ({ key: op.key, avg: bad[o] || !cnt[o] ? -Infinity : sum[o] / cnt[o], share: samples ? wins[o] / samples : 0, n: cnt[o], bad: bad[o] }));
+        // jak často vyšla možnost o líp než q, a jak jistý je rozdíl průměrů (směrodatná chyba párového rozdílu)
+        out.h2h = (o, q) => { let w = 0, k = 0; for (const r of rows) if (r.has(o) && r.has(q)) { k++; const a = r.get(o), b = r.get(q); w += a > b ? 1 : a === b ? 0.5 : 0; } return k ? w / k : 0.5; };
+        out.se = (o, q) => { const d = []; for (const r of rows) if (r.has(o) && r.has(q)) d.push(r.get(o) - r.get(q)); if (d.length < 2) return Infinity; const m = d.reduce((a, b) => a + b, 0) / d.length; const v = d.reduce((a, b) => a + (b - m) * (b - m), 0) / (d.length - 1); return Math.sqrt(v / d.length); };
+        return out;
+      },
+    };
+  }
+  function evaluateOptions(st, pi, options, cfg) {
+    const ev = evaluator(st, pi, options, cfg);
+    const t0 = Date.now();
     const maxS = cfg.samples || EXPERT.maxSamples;
     const budget = cfg.budgetMs || EXPERT.budgetMs;
     // pomalý telefon: po 2 vzorcích a 1,6× rozpočtu konec, ať se nečeká dlouho
-    const over = (s) => !cfg.samples && ((s >= EXPERT.minSamples && Date.now() - t0 > budget) || (s >= 2 && Date.now() - t0 > budget * 1.6));
-    for (let s = 0; s < maxS && !over(s); s++) {
-      const seed = base + s * 7919;
-      const vals = [];
-      let cut = false;
-      for (let o = 0; o < options.length; o++) {
-        if (bad[o]) continue;
-        if (s >= 2 && over(s)) { cut = true; break; } // nedokončený vzorek se nepočítá (férové srovnání)
-        // stejné rozdání i stejné náhody pro všechny možnosti, ať se porovnávají férově
-        const v = withRng(seeded(seed), () => {
-          const c = determinize(st, pi, seeded(seed ^ 0x9e3779b9));
-          if (!options[o].run(c)) return null;
-          return rollout(c, team);
-        });
-        if (v == null) { bad[o] = true; continue; }
-        vals.push([o, v - (options[o].penalty || 0)]);
-      }
-      if (cut) break;
-      for (const [o, v] of vals) { sum[o] += v; cnt[o]++; }
-    }
-    const avg = options.map((_, o) => (bad[o] || !cnt[o] ? -Infinity : sum[o] / cnt[o]));
-    const best = Math.max(...avg);
+    const over = (k) => !cfg.samples && ((k >= EXPERT.minSamples && Date.now() - t0 > budget) || (k >= 2 && Date.now() - t0 > budget * 1.6));
+    while (ev.samples < maxS && !over(ev.samples)) ev.step();
+    return ev.result();
+  }
+  function search(st, pi, options, cfg) {
+    if (options.length < 2) return options.length ? options[0].key : null;
+    const res = evaluateOptions(st, pi, options, cfg);
+    const best = Math.max(...res.map((r) => r.avg));
     // téměř stejně dobré možnosti: náhodně, ať není čitelný
-    const near = options.filter((_, o) => avg[o] > -Infinity && best - avg[o] <= EXPERT.tie);
-    return (near.length ? near[Math.floor(Math.random() * near.length)] : options[avg.indexOf(best)]).key;
+    const near = res.filter((r) => r.avg > -Infinity && best - r.avg <= EXPERT.tie);
+    return (near.length ? near[Math.floor(Math.random() * near.length)] : res.find((r) => r.avg === best)).key;
   }
   // Plán vykládky = posloupnost akcí, jak by ji zahrál daný profil (počítá se na kopii skutečného stavu).
   function planFor(st, pi, prof) {
@@ -718,10 +741,156 @@
     } finally { P = saveP; LV = saveLV; }
   }
 
+  // ---------- trenér: rozbor tahu pro člověka ----------
+  // Stejné zkoušení nanečisto jako u experta, ale z pohledu hráče a jen s tím, co ví hráč.
+  // Vrací seřazené možnosti s průměrem, podílem rozdání, kde vyšly nejlépe, a důvody (klíče překladů).
+  const cardsOf = (st, pi, ids) => ids.map((id) => st.players[pi].hand.find((c) => c.id === id)).filter(Boolean);
+  function situation(st, pi) {
+    const p = st.players[pi];
+    const team = st.teams[p.team];
+    const oi = oppInfo(st, pi);
+    return { d: dangerLevel(st, pi), oppCan: oi.can, oppMin: oi.minHand, hasCan: E.hasCanasta(team), hand: p.hand.length, pile: st.pile.length,
+      needOpen: E.needsOpen(team), req: E.openReq(team), laid: st.turn ? st.turn.laid : 0 };
+  }
+  function rank(res, opts) {
+    const best = Math.max(...res.map((r) => r.avg));
+    const list = res.map((r, i) => Object.assign({}, opts[i], r, { idx: i, diff: Math.round(best - r.avg) }))
+      .filter((r) => r.avg > -Infinity)
+      .sort((a, b) => b.avg - a.avg);
+    // nejlepší proti druhé nejlepší: v kolika procentech rozdání vyšla líp; u ostatních, jestli je rozdíl jistý
+    if (list.length > 1) list[0].beats = res.h2h(list[0].idx, list[1].idx);
+    for (const r of list.slice(1)) r.sure = r.diff > 2 * res.se(list[0].idx, r.idx);
+    if (list.length > 1) list[0].sure = list[1].sure;
+    return list;
+  }
+  function planReasons(st, pi, acts, sit) {
+    const c = clone(st);
+    let pts = 0, can = false;
+    for (const a of acts) {
+      const before = a.meldId != null ? (c.teams[c.players[pi].team].melds.find((m) => m.id === a.meldId) || { cards: [] }).cards.length : 0;
+      pts += E.sumValue(cardsOf(c, pi, a.ids));
+      if (!apply(c, pi, a).ok) break;
+      if (before + a.ids.length >= 7 && before < 7) can = true;
+    }
+    const left = c.players[pi].hand.length;
+    const R = [];
+    if (!acts.length) {
+      if (sit.d >= 2) R.push({ k: 'tr_r_danger_hold', p: { n: sit.oppMin } });
+      else R.push({ k: sit.oppCan ? 'tr_r_keep' : 'tr_r_calm' });
+      if (sit.needOpen) R.push({ k: 'tr_r_open_wait', p: { min: sit.req } });
+      return R;
+    }
+    R.push({ k: 'tr_r_lay_pts', p: { v: pts } });
+    if (can) R.push({ k: 'tr_r_canasta' });
+    if (sit.needOpen) R.push({ k: sit.laid + pts >= sit.req ? 'tr_r_open' : 'tr_r_open_short', p: { min: sit.req, v: sit.laid + pts } });
+    if (left <= 2 && !E.hasCanasta(c.teams[c.players[pi].team])) R.push({ k: 'tr_r_trap', p: { n: left } });
+    else if (sit.d >= 2) R.push({ k: 'tr_r_danger', p: { n: sit.oppMin } });
+    else R.push({ k: 'tr_r_left', p: { n: left } });
+    return R;
+  }
+  function discardReasons(st, pi, id, sit) {
+    const p = st.players[pi];
+    const c = p.hand.find((x) => x.id === id);
+    const team = st.teams[p.team], opp = st.teams[1 - p.team];
+    const R = [];
+    if (!c) return R;
+    if (E.isBlack3(c)) { R.push({ k: 'tr_r_black3' }); return R; }
+    if (opp.melds.some((m) => !E.analyzeAdd(m, [c]).error)) R.push({ k: 'tr_r_opp_uses' });
+    else R.push({ k: 'tr_r_opp_cant' });
+    if (oppDiscards(st, pi).some((t) => t.r === c.r && t.s === c.s)) R.push({ k: 'tr_r_they_threw' });
+    const fits = team.melds.some((m) => !E.analyzeAdd(m, [c]).error) || cardFits(p.hand, c);
+    R.push({ k: fits ? 'tr_r_you_need' : 'tr_r_useless' });
+    if (sit.d >= 2 && E.cardValue(c) >= 15) R.push({ k: 'tr_r_dump_value', p: { v: E.cardValue(c) } });
+    return R;
+  }
+  function analyzer(st0, pi, cfg) {
+    cfg = Object.assign({ maxSamples: 60 }, cfg || {});
+    if (st0.current !== pi || (st0.phase !== 'draw' && st0.phase !== 'play')) return null;
+    const saveP = P, saveLV = LV;
+    P = Object.assign({}, PROFILES.hard); LV = 'hard';
+    try {
+      const st = JSON.parse(JSON.stringify(st0)); // snímek, ať ho další tahy nezmění (log zůstává kvůli důvodům)
+      const sit = situation(st, pi);
+      const parts = []; // { name, opts, ev }
+      let fixed = null;
+      if (st.phase === 'draw') {
+        const opts = [{ key: 'stock', kind: 'stock', ids: [], run: (c) => (c.stock.length ? E.drawStock(c, pi).ok : E.passEnd(c, pi).ok) && finishTurn(c, pi) }];
+        const choice = pileChoice(st, pi);
+        if (choice && pileScore(st, pi, choice) > -Infinity) {
+          opts.unshift({ key: 'pile', kind: 'pile', ids: choice.ids, meldId: choice.meldId, run: (c) => E.takePile(c, pi, choice.ids, choice.meldId).ok && finishTurn(c, pi) });
+        }
+        const blacks = st.pile.slice(0, -1).filter(E.isBlack3).length;
+        const why = {
+          pile: [{ k: sit.pile >= 5 ? 'tr_r_pile_big' : 'tr_r_pile_small', p: { n: sit.pile } }].concat(blacks ? [{ k: 'tr_r_pile_black3', p: { n: blacks } }] : []).concat(sit.d >= 2 ? [{ k: 'tr_r_danger', p: { n: sit.oppMin } }] : []),
+          stock: opts.length > 1 ? [{ k: sit.pile <= 3 ? 'tr_r_pile_small' : 'tr_r_stock_safe', p: { n: sit.pile } }] : [{ k: 'tr_r_no_pile' }],
+        };
+        opts.forEach((o) => { o.reasons = why[o.key]; });
+        if (opts.length < 2) fixed = { kind: 'draw', options: [Object.assign({}, opts[0], { share: 1, diff: 0 })], sit, n: 0, done: true };
+        else parts.push({ name: 'options', opts, ev: evaluator(st, pi, opts, cfg) });
+      } else {
+        // vykládání: plány jako u experta (včetně „nic dalšího“) a vedle toho rovnou odhození
+        const loose = sit.d >= 2 || sit.hasCan;
+        const variants = [{}, { none: true }, { floor: 6, tempt: 999 }].concat(loose ? [{ all: true }, { floor: 2, tempt: 60 }] : []);
+        const plans = [];
+        const seen = new Set();
+        for (const v of variants) {
+          const acts = planFor(st, pi, v);
+          const key = JSON.stringify(acts.map((a) => [a.type, a.meldId, a.ids.slice().sort()]));
+          if (seen.has(key)) continue;
+          seen.add(key);
+          plans.push({ key: 'plan' + plans.length, kind: acts.length ? 'lay' : 'hold', acts, ids: [].concat(...acts.map((a) => a.ids)), penalty: acts.trap ? EXPERT.trap : 0,
+            run: (c) => applyPlan(c, pi, acts) && finishTurn(c, pi), reasons: planReasons(st, pi, acts, sit) });
+        }
+        if (plans.length > 1) parts.push({ name: 'options', opts: plans, ev: evaluator(st, pi, plans, cfg) });
+        const holdPossible = plans.some((p) => p.kind === 'hold');
+        const legal = holdPossible ? discardOrder(st, pi).filter((id) => !E.discardError(st, pi, id)).slice(0, 4) : [];
+        const dopts = legal.map((id) => ({ key: 'd' + id, kind: 'discard', ids: [id], run: (c) => E.discard(c, pi, id).ok, reasons: discardReasons(st, pi, id, sit) }));
+        if (dopts.length > 1) parts.push({ name: 'discard', opts: dopts, ev: evaluator(st, pi, dopts, cfg) });
+        fixed = { kind: 'play', sit, plans, dopts };
+      }
+      const t0 = Date.now();
+      return {
+        run(ms) {
+          const saveP2 = P, saveLV2 = LV;
+          P = Object.assign({}, PROFILES.hard); LV = 'hard';
+          try {
+            const t = Date.now();
+            let k = 0;
+            while (Date.now() - t < ms) {
+              const live = parts.filter((x) => x.ev.samples < cfg.maxSamples);
+              if (!live.length) break;
+              live[k++ % live.length].ev.step();
+            }
+          } finally { P = saveP2; LV = saveLV2; }
+        },
+        get done() { return parts.every((x) => x.ev.samples >= cfg.maxSamples); },
+        get elapsed() { return Date.now() - t0; },
+        result() {
+          if (fixed && fixed.kind === 'draw') return fixed;
+          const get = (name) => parts.find((x) => x.name === name);
+          const n = parts.length ? Math.min(...parts.map((x) => x.ev.samples)) : 0;
+          if (st.phase === 'draw') { const pt = get('options'); return { kind: 'draw', options: rank(pt.ev.result(), pt.opts), sit, n }; }
+          const po = get('options');
+          const options = po ? rank(po.ev.result(), po.opts) : fixed.plans.map((p) => Object.assign({}, p, { share: 1, diff: 0 }));
+          const pd = get('discard');
+          const discard = pd ? rank(pd.ev.result(), pd.opts) : fixed.dopts.map((d) => Object.assign({}, d, { share: 1, diff: 0 }));
+          return { kind: 'play', options, discard: discard.length ? discard : null, sit, n };
+        },
+      };
+    } finally { P = saveP; LV = saveLV; }
+  }
+  // synchronní rozbor (testy, jednoduché použití)
+  function analyze(st, pi, cfg) {
+    const a = analyzer(st, pi, cfg);
+    if (!a) return null;
+    a.run((cfg && cfg.budgetMs) || 700);
+    return a.result();
+  }
+
   // Zpětná kompatibilita: „hladová“ akce (používají ji testy).
   const greedyAction = (st, pi) => pickAction(st, pi, 'all');
 
-  const api = { step, candidateMelds, greedyAction, discardOrder, wantsPile, pileChoice, dangerLevel, chooseMode, cardFits, TUNE, PROFILES, STYLES };
+  const api = { step, candidateMelds, greedyAction, discardOrder, wantsPile, pileChoice, dangerLevel, chooseMode, cardFits, analyze, analyzer, TUNE, PROFILES, STYLES };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.Bot = api;
 })(typeof window !== 'undefined' ? window : globalThis);

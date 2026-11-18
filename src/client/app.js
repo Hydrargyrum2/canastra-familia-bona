@@ -38,7 +38,7 @@
   let botTimer = null;
   let toastTimer = null;
   let botFails = 0;
-  let prefs = { lang: detectLang(), level: 'hard', handSort: 'suit', music: true, musicVol: 35, sfx: true, sfxVol: 70, vibrate: true, track: 0, push: false, zoomMine: 1, zoomOpp: 1 };
+  let prefs = { lang: detectLang(), level: 'hard', handSort: 'suit', music: true, musicVol: 35, sfx: true, sfxVol: 70, vibrate: true, track: 0, push: false, zoomMine: 1, zoomOpp: 1, trainer: false };
   const S = window.Sound || { configure() {}, sfx() {}, vibrate() {}, next() {}, TRACKS: [], track: 0, canVibrate: false };
   const soundPrefs = () => ({ music: prefs.music, musicVol: prefs.musicVol, sfx: prefs.sfx, sfxVol: prefs.sfxVol, vibrate: prefs.vibrate, track: prefs.track });
   let pending = null; // vykládka čekající na volbu, kam dát žolíka
@@ -111,7 +111,7 @@
       if (p && LANGS.includes(p.lang)) prefs.lang = p.lang;
       if (p && LEVELS.includes(p.level)) prefs.level = p.level;
       if (p) {
-        for (const k of ['music', 'sfx', 'vibrate', 'push']) if (typeof p[k] === 'boolean') prefs[k] = p[k];
+        for (const k of ['music', 'sfx', 'vibrate', 'push', 'trainer']) if (typeof p[k] === 'boolean') prefs[k] = p[k];
         for (const k of ['musicVol', 'sfxVol']) if (typeof p[k] === 'number' && p[k] >= 0 && p[k] <= 100) prefs[k] = p[k];
         if (typeof p.track === 'number') prefs.track = p.track;
         if (p.handSort === 'rank' || p.handSort === 'suit') prefs.handSort = p.handSort;
@@ -738,6 +738,9 @@
       ${hasLocalGame() ? `<button class="btn primary contbtn" data-act="close">▶ ${esc(t(tut.on ? 'continue_tut' : 'continue_local'))}</button>` : ''}
       <h3>${esc(t('settings_level'))}</h3>
       ${levelButtons()}
+      <h3>🎓 ${esc(t('tr_mode'))}</h3>
+      ${onOff('trainer')}
+      <p class="seghint">${esc(t('tr_mode_hint'))}</p>
       <h3>${esc(t('new_game'))}</h3>
       <div class="bigmenu">
         ${bigBtn('new1', '🙂', t('solo_1v1'), t('solo_1v1_sub'))}
@@ -1087,9 +1090,109 @@
     if (d == null) d = (myHand().find((c) => !E.discardError(st, ME, c.id)) || {}).id;
     return { text: t('coach_discard') + (d != null ? ' ' + t('coach_discard_tip', { card: lab([d]) }) : ''), ids: d != null ? [d] : null, label: t('show_me') };
   }
+  // ---------- trenér: komentovaná hra proti robotům ----------
+  const trainer = { key: null, res: null, an: null, hidden: false, more: false, feedback: null, timer: null };
+  const trainerOn = () => !!prefs.trainer && !online() && !!st && localStarted && !tut.on;
+  function trainerKey() {
+    if (!st || !st.turn) return '';
+    const melds = st.teams.map((tm) => tm.melds.map((m) => m.cards.length).join('.')).join('/');
+    return [st.round, st.phase, st.current, myHand().map((c) => c.id).join(','), melds, st.turn.laid || 0, st.pile.length].join('|');
+  }
+  const lab = (ids) => ids.map((id) => myHand().find((c) => c.id === id)).filter(Boolean).map(cardLabel).join(' ');
+  function optLabel(o) {
+    if (o.kind === 'stock') return t('tr_draw_stock');
+    if (o.kind === 'pile') return o.ids.length ? t('tr_take_pile_with', { cards: lab(o.ids) }) : t('tr_take_pile');
+    if (o.kind === 'hold') return t('tr_hold');
+    if (o.kind === 'discard') return t('tr_discard', { card: lab(o.ids) });
+    return t('tr_lay', { what: o.acts.map((a) => lab(a.ids)).join(' · ') });
+  }
+  const pct = (x) => Math.round(100 * x) + ' %';
+  const rsn = (r) => `<li>${esc(t(r.k, r.p || {}))}</li>`;
+  function optionBlock(list, title) {
+    const best = list[0];
+    let h = `<div class="trbest"><b>${esc(title || t('tr_best'))}</b> ${esc(optLabel(best))}</div>`;
+    if (list.length > 1 && best.beats != null) h += `<div class="trpct">${esc(t(best.sure ? 'tr_beats' : 'tr_beats_close', { p: pct(best.beats), other: optLabel(list[1]) }))}</div>`;
+    if (trainer.more) {
+      h += `<ul class="trwhy">${(best.reasons || []).map(rsn).join('')}</ul>`;
+      if (list.length > 1) {
+        h += `<ul class="tralt">${list.slice(1).map((o) => `<li><b>${esc(optLabel(o))}</b>: ${esc(!o.sure || o.diff <= 10 ? t('tr_alt_eq') : t('tr_alt', { d: Math.round(o.diff / 10) * 10 }))}<br><span>${(o.reasons || []).map((r) => esc(t(r.k, r.p || {}))).join(' ')}</span></li>`).join('')}</ul>`;
+      }
+    }
+    return h;
+  }
+  // rozbor běží po kouscích v pozadí a postupně se zpřesňuje (nejdéle ~6 s)
+  function trainerTick(key) {
+    clearTimeout(trainer.timer);
+    if (!trainer.an || trainer.key !== key || trainerKey() !== key) return;
+    try { trainer.an.run(110); trainer.res = trainer.an.result(); } catch (e) { trainer.an = null; return; }
+    renderCoach();
+    if (!trainer.an.done && trainer.an.elapsed < 6000) trainer.timer = setTimeout(() => trainerTick(key), 40);
+  }
+  function renderTrainer(el) {
+    if (trainer.hidden) {
+      el.hidden = false;
+      const html = `<span class="ci">🎓</span><span class="ct">${esc(t('tr_hidden'))}</span><span class="cb"><button class="mini" data-act="trhide">${esc(t('tr_show'))}</button></span>`;
+      if (el.dataset.html !== html) { el.dataset.html = html; el.innerHTML = html; }
+      return;
+    }
+    let body = '';
+    let ids = null;
+    const mine = myTurn() && (st.phase === 'draw' || st.phase === 'play') && pausedFor() == null;
+    if (!mine) {
+      body = trainer.feedback ? `<div class="trfb">${esc(trainer.feedback)}</div>` : `<div>${esc(t('tr_wait'))}</div>`;
+    } else {
+      let pre = '';
+      if (canRedrawNow()) {
+        const c = myHand().find((x) => x.id === st.turn.drawnId);
+        if (c) pre = `<div class="trpct">${esc(t(B.cardFits(myHand(), c) ? 'coach_redraw_keep' : 'coach_redraw', { card: cardLabel(c) }))}</div>`;
+      }
+      body = pre;
+      const key = trainerKey();
+      if (trainer.key !== key) {
+        trainer.key = key;
+        trainer.res = null;
+        clearTimeout(trainer.timer);
+        try { trainer.an = B.analyzer(st, ME, { maxSamples: 60 }); } catch (e) { trainer.an = null; }
+        trainer.timer = setTimeout(() => trainerTick(key), 60);
+      }
+      const r0 = trainer.res;
+      const fresh = r0 && (r0.n >= 6 || (trainer.an && trainer.an.done) || r0.kind === 'draw' && r0.options.length < 2);
+      if (!fresh) {
+        body += `<div class="dots">${esc(t('tr_thinking'))}</div>`;
+      } else if (trainer.res) {
+        const r = trainer.res;
+        if (r.kind === 'play' && r.options.length && r.options[0].kind === 'hold' && r.discard) {
+          body += (r.options.length > 1 ? optionBlock(r.options) : `<div class="trbest"><b>${esc(t('tr_best'))}</b> ${esc(t('tr_hold'))}</div>${trainer.more ? `<ul class="trwhy">${(r.options[0].reasons || []).map(rsn).join('')}</ul>` : ''}`)
+            + optionBlock(r.discard, t('tr_then'));
+          ids = r.discard[0].ids;
+        } else if (r.options.length) {
+          body += optionBlock(r.options);
+          ids = r.options[0].ids && r.options[0].ids.length ? r.options[0].ids : null;
+        }
+        body += `<div class="trfoot"><button class="linkbtn trmore" data-act="trmore">${esc(t(trainer.more ? 'tr_less' : 'tr_more'))}</button>`
+          + (r.n ? `<span class="trn">${esc(t(trainer.an && !trainer.an.done ? 'tr_n_run' : 'tr_n', { n: r.n }))}</span>` : '') + '</div>';
+      }
+    }
+    const html = `<span class="ci">🎓</span><div class="ct tr">${body}</div><span class="cb">${ids ? `<button class="mini" data-act="coachshow" data-v="${ids.join(',')}">${esc(t('show_me'))}</button>` : ''}<button class="mini ghost" data-act="trhide" aria-label="${esc(t('tut_hide'))}">✕</button></span>`;
+    el.hidden = false;
+    if (el.dataset.html !== html) { el.dataset.html = html; el.innerHTML = html; }
+  }
+  // Po tahu hráče: porovnat s doporučením (hromádka/balíček a odhození)
+  function trainerJudge(kind, id) {
+    if (!trainerOn() || !trainer.res || trainer.key !== trainerKey()) return;
+    const r = trainer.res;
+    let list = null, pick = null;
+    if (kind === 'draw' || kind === 'pile') { list = r.kind === 'draw' ? r.options : null; pick = list && list.find((o) => o.kind === (kind === 'draw' ? 'stock' : 'pile')); }
+    if (kind === 'discard') { list = r.discard || null; pick = list && list.find((o) => o.ids[0] === id); }
+    if (!list || list.length < 2) { trainer.feedback = null; return; }
+    if (!pick) { trainer.feedback = t('tr_fb_other'); return; }
+    trainer.feedback = pick === list[0] || pick.diff <= 10 || !pick.sure ? t('tr_fb_ok') : t('tr_fb_worse', { what: optLabel(pick), d: Math.round(pick.diff / 10) * 10, best: optLabel(list[0]) });
+  }
+
   function renderCoach() {
     const el = $('#coach');
     if (!el) return;
+    if (!tut.on && trainerOn()) { renderTrainer(el); return; }
     const tip = tut.on && !online() && !tut.hidden ? coachTip() : null;
     el.hidden = !tip;
     if (!tip) { el.innerHTML = ''; return; }
@@ -1978,6 +2081,8 @@
   function act(name, el) {
     let r = null;
     const v = el && el.dataset ? el.dataset.v : null;
+    if (name === 'draw' || name === 'pile') trainerJudge(name);
+    else if (name === 'discard' && sel.size === 1) trainerJudge('discard', Array.from(sel)[0]);
     switch (name) {
       case 'menu': nav = []; overlay = 'menu'; break;
       case 'leaveask': overlay = 'leaveask'; break;
@@ -2063,6 +2168,8 @@
         overlay = null;
         break;
       case 'tuthint': tut.hidden = !tut.hidden; if (overlay === 'menu') overlay = null; break;
+      case 'trhide': trainer.hidden = !trainer.hidden; if (overlay === 'menu') overlay = null; break;
+      case 'trmore': trainer.more = !trainer.more; renderCoach(); return;
       case 'coachshow':
         sel.clear();
         String(v || '').split(',').map(Number).filter((x) => myHand().some((c) => c.id === x)).forEach((x) => sel.add(x));
@@ -2099,6 +2206,7 @@
         break;
       case 'pref': {
         const k = el.dataset.k;
+        if (k === 'trainer') { prefs.trainer = v === '1'; trainer.key = null; trainer.feedback = null; trainer.hidden = false; savePrefs(); break; }
         if (['music', 'sfx', 'vibrate'].includes(k)) {
           prefs[k] = v === '1';
           savePrefs();
