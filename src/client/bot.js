@@ -507,6 +507,7 @@
   }
   let V2 = true;
   function step(st, pi, level, profile) {
+    if (level === 'expert' && st.current === pi && st.phase !== 'cut') return expertStep(st, pi, profile || {});
     LV = level === 'easy' || level === 'medium' ? level : 'hard';
     const pl = st.players[pi];
     const style = (profile && profile.style) || pl.botStyle || (pl.botStyle = STYLE_NAMES[Math.floor(Math.random() * STYLE_NAMES.length)]);
@@ -552,6 +553,169 @@
     const u = E.canRetract(st, pi) ? E.retractOpening(st, pi) : E.undoTurn(st, pi);
     if (st.phase === 'play' || st.phase === 'draw') st.turn.bot = { noMeld: true, steps: 0 };
     return u;
+  }
+
+  // ---------- expert: zkouší tahy nanečisto ----------
+  // U důležitých rozhodnutí (hromádka nebo balíček, co vyložit, co odhodit) si robot několikrát
+  // náhodně rozdá karty, které nezná (ruce soupeřů a balíček), podle toho, co ví: svoje karty, stůl,
+  // hromádku a karty, které soupeř prokazatelně vzal z hromádky. Každou možnost pak dohraje do konce
+  // kola těžkým robotem a vybere tu, která v průměru vyjde nejlépe. Do cizích karet nikdy nekouká.
+  // trap: přirážka za plán, po kterém zůstanou dvě karty bez canasty (člověk by toho využil)
+  const EXPERT = { budgetMs: 650, minSamples: 4, maxSamples: 48, horizon: 600, tie: 6, trap: 120 };
+  const ROLL = { style: 'steady' };
+  function seeded(a) { return function () { a |= 0; a = (a + 0x6d2b79f5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
+  function withRng(rng, fn) { const orig = Math.random; Math.random = rng; try { return fn(); } finally { Math.random = orig; } }
+  function determinize(st, pi, rng) {
+    const c = clone(st);
+    const known = c.players.map((p, j) => new Set(j === pi ? [] : (p.known || [])));
+    const pool = [];
+    c.players.forEach((p, j) => { if (j !== pi) for (const card of p.hand) if (!known[j].has(card.id)) pool.push(card); });
+    pool.push(...c.stock);
+    for (let i = pool.length - 1; i > 0; i--) { const k = Math.floor(rng() * (i + 1)); [pool[i], pool[k]] = [pool[k], pool[i]]; }
+    const plain = pool.filter((x) => !E.isRed3(x)); // červená trojka v ruce nikdy nezůstává
+    const red = pool.filter((x) => E.isRed3(x));
+    let k = 0;
+    c.players.forEach((p, j) => { if (j !== pi) p.hand = p.hand.map((card) => (known[j].has(card.id) ? card : plain[k++])); });
+    const rest = plain.slice(k).concat(red);
+    for (let i = rest.length - 1; i > 0; i--) { const q = Math.floor(rng() * (i + 1)); [rest[i], rest[q]] = [rest[q], rest[i]]; }
+    c.stock = rest;
+    return c;
+  }
+  // Odhad, když kolo nedoběhne: body na stole a canasty minus karty v ruce.
+  function teamEstimate(c, t) {
+    let v = 0;
+    for (const m of c.teams[t].melds) { v += E.sumValue(m.cards); if (m.cards.length >= 7) v += 100; }
+    v += 100 * (c.teams[t].red3 ? c.teams[t].red3.length : 0);
+    for (const p of c.players) if (p.team === t) v -= 0.6 * E.sumValue(p.hand);
+    return v;
+  }
+  function rollout(c, team) {
+    let n = 0;
+    while (c.phase !== 'roundOver' && c.phase !== 'gameOver' && n++ < EXPERT.horizon) {
+      if (c.phase === 'cut') break;
+      const r = step(c, c.current, 'hard', ROLL);
+      if (!r.ok) break;
+    }
+    if ((c.phase === 'roundOver' || c.phase === 'gameOver') && c.lastRound) {
+      const T = c.lastRound.teams;
+      return T[team].total - T[1 - team].total;
+    }
+    return teamEstimate(c, team) - teamEstimate(c, 1 - team);
+  }
+  // options: [{ key, run(c) -> bool }]; vrátí klíč nejlepší možnosti
+  function search(st, pi, options, cfg) {
+    if (options.length < 2) return options.length ? options[0].key : null;
+    const team = st.players[pi].team;
+    const sum = options.map(() => 0), cnt = options.map(() => 0), bad = options.map(() => false);
+    const t0 = Date.now();
+    const base = Math.floor(Math.random() * 1e9);
+    const maxS = cfg.samples || EXPERT.maxSamples;
+    const budget = cfg.budgetMs || EXPERT.budgetMs;
+    // pomalý telefon: po 2 vzorcích a 1,6× rozpočtu konec, ať se nečeká dlouho
+    const over = (s) => !cfg.samples && ((s >= EXPERT.minSamples && Date.now() - t0 > budget) || (s >= 2 && Date.now() - t0 > budget * 1.6));
+    for (let s = 0; s < maxS && !over(s); s++) {
+      const seed = base + s * 7919;
+      const vals = [];
+      let cut = false;
+      for (let o = 0; o < options.length; o++) {
+        if (bad[o]) continue;
+        if (s >= 2 && over(s)) { cut = true; break; } // nedokončený vzorek se nepočítá (férové srovnání)
+        // stejné rozdání i stejné náhody pro všechny možnosti, ať se porovnávají férově
+        const v = withRng(seeded(seed), () => {
+          const c = determinize(st, pi, seeded(seed ^ 0x9e3779b9));
+          if (!options[o].run(c)) return null;
+          return rollout(c, team);
+        });
+        if (v == null) { bad[o] = true; continue; }
+        vals.push([o, v - (options[o].penalty || 0)]);
+      }
+      if (cut) break;
+      for (const [o, v] of vals) { sum[o] += v; cnt[o]++; }
+    }
+    const avg = options.map((_, o) => (bad[o] || !cnt[o] ? -Infinity : sum[o] / cnt[o]));
+    const best = Math.max(...avg);
+    // téměř stejně dobré možnosti: náhodně, ať není čitelný
+    const near = options.filter((_, o) => avg[o] > -Infinity && best - avg[o] <= EXPERT.tie);
+    return (near.length ? near[Math.floor(Math.random() * near.length)] : options[avg.indexOf(best)]).key;
+  }
+  // Plán vykládky = posloupnost akcí, jak by ji zahrál daný profil (počítá se na kopii skutečného stavu).
+  function planFor(st, pi, prof) {
+    const c = clone(st);
+    const acts = [];
+    const saveP = P, saveLV = LV;
+    P = Object.assign({}, PROFILES.hard, prof);
+    LV = 'hard';
+    try {
+      const bt = c.turn.bot || (c.turn.bot = { noMeld: false, steps: 0 });
+      bt.phase = null;
+      for (let i = 0; i < 40 && c.phase === 'play'; i++) {
+        const a = prof.all ? pickAction(c, pi, 'all') : prof.none ? null : chooseMeldAction2(c, pi);
+        if (!a || !apply(c, pi, a).ok) break;
+        acts.push({ type: a.type, ids: a.ids.slice(), meldId: a.meldId, kind: a.kind });
+      }
+    } finally { P = saveP; LV = saveLV; }
+    const cp = c.players[pi];
+    acts.trap = cp.hand.length <= 2 && !E.hasCanasta(c.teams[cp.team]) && c.stock.length > 10 && c.phase === 'play';
+    return acts;
+  }
+  const applyPlan = (c, pi, acts) => acts.every((a) => apply(c, pi, a).ok);
+  function finishTurn(c, pi) {
+    for (let i = 0; i < 50 && c.current === pi && c.phase === 'play'; i++) if (!step(c, pi, 'hard', ROLL).ok) return false;
+    return true;
+  }
+  function expertStep(st, pi, cfg) {
+    const pl = st.players[pi];
+    const saveP = P, saveLV = LV;
+    try {
+      if (st.phase === 'draw') {
+        P = Object.assign({}, PROFILES.hard); LV = 'hard';
+        const choice = pileChoice(st, pi);
+        if (choice && pileScore(st, pi, choice) > -Infinity) {
+          const opts = [
+            { key: 'pile', run: (c) => E.takePile(c, pi, choice.ids, choice.meldId).ok && finishTurn(c, pi) },
+            { key: 'stock', run: (c) => (c.stock.length ? E.drawStock(c, pi).ok : E.passEnd(c, pi).ok) && finishTurn(c, pi) },
+          ];
+          const k = search(st, pi, opts, cfg);
+          if (k === 'pile') { const r = E.takePile(st, pi, choice.ids, choice.meldId); if (r.ok) return r; }
+        }
+        return st.stock.length ? E.drawStock(st, pi) : E.passEnd(st, pi);
+      }
+      if (st.phase === 'play') {
+        if (E.canRedraw && E.canRedraw(st, pi)) return step(st, pi, 'hard', ROLL);
+        const bt = st.turn.bot || (st.turn.bot = { noMeld: false, steps: 0 });
+        if (!bt.plan) {
+          // sypat všechno nebo jít pod hranici má smysl jen, když hrozí konec nebo už je canasta
+          const loose = dangerLevel(st, pi) >= 2 || E.hasCanasta(st.teams[pl.team]);
+          const variants = [{}, { none: true }, { floor: 6, tempt: 999 }].concat(loose ? [{ all: true }, { floor: 2, tempt: 60 }] : []);
+          const plans = [];
+          const seen = new Set();
+          for (const v of variants) {
+            const acts = planFor(st, pi, v);
+            const key = JSON.stringify(acts.map((a) => [a.type, a.meldId, a.ids.slice().sort()]));
+            if (seen.has(key)) continue;
+            seen.add(key);
+            plans.push({ key: plans.length, acts, penalty: acts.trap ? EXPERT.trap : 0 });
+          }
+          const k = search(st, pi, plans.map((p) => ({ key: p.key, penalty: p.penalty, run: (c) => applyPlan(c, pi, p.acts) && finishTurn(c, pi) })), cfg);
+          bt.plan = (plans.find((p) => p.key === k) || plans[0]).acts.slice();
+        }
+        while (bt.plan.length) {
+          const a = bt.plan.shift();
+          const r = apply(st, pi, a);
+          if (r.ok) return r;
+          bt.plan = [];
+        }
+        // odhození: nejlepší z několika kandidátů těžkého robota
+        P = Object.assign({}, PROFILES.hard); LV = 'hard';
+        const legal = discardOrder(st, pi).filter((id) => !E.discardError(st, pi, id)).slice(0, 3);
+        if (legal.length) {
+          const k = search(st, pi, legal.map((id) => ({ key: id, run: (c) => E.discard(c, pi, id).ok })), cfg);
+          const r = E.discard(st, pi, k != null ? k : legal[0]);
+          if (r.ok) return r;
+        }
+      }
+      return step(st, pi, 'hard', ROLL);
+    } finally { P = saveP; LV = saveLV; }
   }
 
   // Zpětná kompatibilita: „hladová“ akce (používají ji testy).

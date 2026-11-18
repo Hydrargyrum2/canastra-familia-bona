@@ -985,7 +985,7 @@ a.mini { text-decoration: none; display: inline-flex; align-items: center; }
       t.needOpen = t.score >= RULES.openThreshold;
       t.openReq = RULES.openMin;
     }
-    for (const p of st.players) p.hand = [];
+    for (const p of st.players) { p.hand = []; p.known = []; } // known: karty, o kterých všichni ví, že je hráč má (vzal je z hromádky)
     st.cutInfo = null;
     st.current = (st.dealer + 1) % n;
     if (st.family) {
@@ -1235,6 +1235,7 @@ a.mini { text-decoration: none; display: inline-flex; align-items: center; }
     }
     st.turn.laid += sumValue(chk.cards);
     st.turn.newIds = st.pile.map((c) => c.id);
+    p.known = (p.known || []).concat(st.pile.map((c) => c.id));
     p.hand = p.hand.concat(st.pile);
     st.pile = [];
     st.turn.mustMeld = null;
@@ -2002,6 +2003,7 @@ a.mini { text-decoration: none; display: inline-flex; align-items: center; }
   }
   let V2 = true;
   function step(st, pi, level, profile) {
+    if (level === 'expert' && st.current === pi && st.phase !== 'cut') return expertStep(st, pi, profile || {});
     LV = level === 'easy' || level === 'medium' ? level : 'hard';
     const pl = st.players[pi];
     const style = (profile && profile.style) || pl.botStyle || (pl.botStyle = STYLE_NAMES[Math.floor(Math.random() * STYLE_NAMES.length)]);
@@ -2047,6 +2049,169 @@ a.mini { text-decoration: none; display: inline-flex; align-items: center; }
     const u = E.canRetract(st, pi) ? E.retractOpening(st, pi) : E.undoTurn(st, pi);
     if (st.phase === 'play' || st.phase === 'draw') st.turn.bot = { noMeld: true, steps: 0 };
     return u;
+  }
+
+  // ---------- expert: zkouší tahy nanečisto ----------
+  // U důležitých rozhodnutí (hromádka nebo balíček, co vyložit, co odhodit) si robot několikrát
+  // náhodně rozdá karty, které nezná (ruce soupeřů a balíček), podle toho, co ví: svoje karty, stůl,
+  // hromádku a karty, které soupeř prokazatelně vzal z hromádky. Každou možnost pak dohraje do konce
+  // kola těžkým robotem a vybere tu, která v průměru vyjde nejlépe. Do cizích karet nikdy nekouká.
+  // trap: přirážka za plán, po kterém zůstanou dvě karty bez canasty (člověk by toho využil)
+  const EXPERT = { budgetMs: 650, minSamples: 4, maxSamples: 48, horizon: 600, tie: 6, trap: 120 };
+  const ROLL = { style: 'steady' };
+  function seeded(a) { return function () { a |= 0; a = (a + 0x6d2b79f5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
+  function withRng(rng, fn) { const orig = Math.random; Math.random = rng; try { return fn(); } finally { Math.random = orig; } }
+  function determinize(st, pi, rng) {
+    const c = clone(st);
+    const known = c.players.map((p, j) => new Set(j === pi ? [] : (p.known || [])));
+    const pool = [];
+    c.players.forEach((p, j) => { if (j !== pi) for (const card of p.hand) if (!known[j].has(card.id)) pool.push(card); });
+    pool.push(...c.stock);
+    for (let i = pool.length - 1; i > 0; i--) { const k = Math.floor(rng() * (i + 1)); [pool[i], pool[k]] = [pool[k], pool[i]]; }
+    const plain = pool.filter((x) => !E.isRed3(x)); // červená trojka v ruce nikdy nezůstává
+    const red = pool.filter((x) => E.isRed3(x));
+    let k = 0;
+    c.players.forEach((p, j) => { if (j !== pi) p.hand = p.hand.map((card) => (known[j].has(card.id) ? card : plain[k++])); });
+    const rest = plain.slice(k).concat(red);
+    for (let i = rest.length - 1; i > 0; i--) { const q = Math.floor(rng() * (i + 1)); [rest[i], rest[q]] = [rest[q], rest[i]]; }
+    c.stock = rest;
+    return c;
+  }
+  // Odhad, když kolo nedoběhne: body na stole a canasty minus karty v ruce.
+  function teamEstimate(c, t) {
+    let v = 0;
+    for (const m of c.teams[t].melds) { v += E.sumValue(m.cards); if (m.cards.length >= 7) v += 100; }
+    v += 100 * (c.teams[t].red3 ? c.teams[t].red3.length : 0);
+    for (const p of c.players) if (p.team === t) v -= 0.6 * E.sumValue(p.hand);
+    return v;
+  }
+  function rollout(c, team) {
+    let n = 0;
+    while (c.phase !== 'roundOver' && c.phase !== 'gameOver' && n++ < EXPERT.horizon) {
+      if (c.phase === 'cut') break;
+      const r = step(c, c.current, 'hard', ROLL);
+      if (!r.ok) break;
+    }
+    if ((c.phase === 'roundOver' || c.phase === 'gameOver') && c.lastRound) {
+      const T = c.lastRound.teams;
+      return T[team].total - T[1 - team].total;
+    }
+    return teamEstimate(c, team) - teamEstimate(c, 1 - team);
+  }
+  // options: [{ key, run(c) -> bool }]; vrátí klíč nejlepší možnosti
+  function search(st, pi, options, cfg) {
+    if (options.length < 2) return options.length ? options[0].key : null;
+    const team = st.players[pi].team;
+    const sum = options.map(() => 0), cnt = options.map(() => 0), bad = options.map(() => false);
+    const t0 = Date.now();
+    const base = Math.floor(Math.random() * 1e9);
+    const maxS = cfg.samples || EXPERT.maxSamples;
+    const budget = cfg.budgetMs || EXPERT.budgetMs;
+    // pomalý telefon: po 2 vzorcích a 1,6× rozpočtu konec, ať se nečeká dlouho
+    const over = (s) => !cfg.samples && ((s >= EXPERT.minSamples && Date.now() - t0 > budget) || (s >= 2 && Date.now() - t0 > budget * 1.6));
+    for (let s = 0; s < maxS && !over(s); s++) {
+      const seed = base + s * 7919;
+      const vals = [];
+      let cut = false;
+      for (let o = 0; o < options.length; o++) {
+        if (bad[o]) continue;
+        if (s >= 2 && over(s)) { cut = true; break; } // nedokončený vzorek se nepočítá (férové srovnání)
+        // stejné rozdání i stejné náhody pro všechny možnosti, ať se porovnávají férově
+        const v = withRng(seeded(seed), () => {
+          const c = determinize(st, pi, seeded(seed ^ 0x9e3779b9));
+          if (!options[o].run(c)) return null;
+          return rollout(c, team);
+        });
+        if (v == null) { bad[o] = true; continue; }
+        vals.push([o, v - (options[o].penalty || 0)]);
+      }
+      if (cut) break;
+      for (const [o, v] of vals) { sum[o] += v; cnt[o]++; }
+    }
+    const avg = options.map((_, o) => (bad[o] || !cnt[o] ? -Infinity : sum[o] / cnt[o]));
+    const best = Math.max(...avg);
+    // téměř stejně dobré možnosti: náhodně, ať není čitelný
+    const near = options.filter((_, o) => avg[o] > -Infinity && best - avg[o] <= EXPERT.tie);
+    return (near.length ? near[Math.floor(Math.random() * near.length)] : options[avg.indexOf(best)]).key;
+  }
+  // Plán vykládky = posloupnost akcí, jak by ji zahrál daný profil (počítá se na kopii skutečného stavu).
+  function planFor(st, pi, prof) {
+    const c = clone(st);
+    const acts = [];
+    const saveP = P, saveLV = LV;
+    P = Object.assign({}, PROFILES.hard, prof);
+    LV = 'hard';
+    try {
+      const bt = c.turn.bot || (c.turn.bot = { noMeld: false, steps: 0 });
+      bt.phase = null;
+      for (let i = 0; i < 40 && c.phase === 'play'; i++) {
+        const a = prof.all ? pickAction(c, pi, 'all') : prof.none ? null : chooseMeldAction2(c, pi);
+        if (!a || !apply(c, pi, a).ok) break;
+        acts.push({ type: a.type, ids: a.ids.slice(), meldId: a.meldId, kind: a.kind });
+      }
+    } finally { P = saveP; LV = saveLV; }
+    const cp = c.players[pi];
+    acts.trap = cp.hand.length <= 2 && !E.hasCanasta(c.teams[cp.team]) && c.stock.length > 10 && c.phase === 'play';
+    return acts;
+  }
+  const applyPlan = (c, pi, acts) => acts.every((a) => apply(c, pi, a).ok);
+  function finishTurn(c, pi) {
+    for (let i = 0; i < 50 && c.current === pi && c.phase === 'play'; i++) if (!step(c, pi, 'hard', ROLL).ok) return false;
+    return true;
+  }
+  function expertStep(st, pi, cfg) {
+    const pl = st.players[pi];
+    const saveP = P, saveLV = LV;
+    try {
+      if (st.phase === 'draw') {
+        P = Object.assign({}, PROFILES.hard); LV = 'hard';
+        const choice = pileChoice(st, pi);
+        if (choice && pileScore(st, pi, choice) > -Infinity) {
+          const opts = [
+            { key: 'pile', run: (c) => E.takePile(c, pi, choice.ids, choice.meldId).ok && finishTurn(c, pi) },
+            { key: 'stock', run: (c) => (c.stock.length ? E.drawStock(c, pi).ok : E.passEnd(c, pi).ok) && finishTurn(c, pi) },
+          ];
+          const k = search(st, pi, opts, cfg);
+          if (k === 'pile') { const r = E.takePile(st, pi, choice.ids, choice.meldId); if (r.ok) return r; }
+        }
+        return st.stock.length ? E.drawStock(st, pi) : E.passEnd(st, pi);
+      }
+      if (st.phase === 'play') {
+        if (E.canRedraw && E.canRedraw(st, pi)) return step(st, pi, 'hard', ROLL);
+        const bt = st.turn.bot || (st.turn.bot = { noMeld: false, steps: 0 });
+        if (!bt.plan) {
+          // sypat všechno nebo jít pod hranici má smysl jen, když hrozí konec nebo už je canasta
+          const loose = dangerLevel(st, pi) >= 2 || E.hasCanasta(st.teams[pl.team]);
+          const variants = [{}, { none: true }, { floor: 6, tempt: 999 }].concat(loose ? [{ all: true }, { floor: 2, tempt: 60 }] : []);
+          const plans = [];
+          const seen = new Set();
+          for (const v of variants) {
+            const acts = planFor(st, pi, v);
+            const key = JSON.stringify(acts.map((a) => [a.type, a.meldId, a.ids.slice().sort()]));
+            if (seen.has(key)) continue;
+            seen.add(key);
+            plans.push({ key: plans.length, acts, penalty: acts.trap ? EXPERT.trap : 0 });
+          }
+          const k = search(st, pi, plans.map((p) => ({ key: p.key, penalty: p.penalty, run: (c) => applyPlan(c, pi, p.acts) && finishTurn(c, pi) })), cfg);
+          bt.plan = (plans.find((p) => p.key === k) || plans[0]).acts.slice();
+        }
+        while (bt.plan.length) {
+          const a = bt.plan.shift();
+          const r = apply(st, pi, a);
+          if (r.ok) return r;
+          bt.plan = [];
+        }
+        // odhození: nejlepší z několika kandidátů těžkého robota
+        P = Object.assign({}, PROFILES.hard); LV = 'hard';
+        const legal = discardOrder(st, pi).filter((id) => !E.discardError(st, pi, id)).slice(0, 3);
+        if (legal.length) {
+          const k = search(st, pi, legal.map((id) => ({ key: id, run: (c) => E.discard(c, pi, id).ok })), cfg);
+          const r = E.discard(st, pi, k != null ? k : legal[0]);
+          if (r.ok) return r;
+        }
+      }
+      return step(st, pi, 'hard', ROLL);
+    } finally { P = saveP; LV = saveLV; }
   }
 
   // Zpětná kompatibilita: „hladová“ akce (používají ji testy).
@@ -2111,9 +2276,6 @@ a.mini { text-decoration: none; display: inline-flex; align-items: center; }
     settings_lang: 'Jazyk',
     joker: 'jokera',
     settings_level: 'Obtížnost robotů', level_easy: 'Lehká', level_medium: 'Střední', level_hard: 'Těžká',
-    level_easy_hint: 'Robot vykládá hned všechno a bere každou hromádku, kterou může.',
-    level_medium_hint: 'Robot hraje rozumně, ale občas odhodí, co by neměl, a skočí na past s černými trojkami.',
-    level_hard_hint: 'Robot drží karty v ruce, hlídá, kdy můžeš zavřít, a hromádku bere, jen když se mu vyplatí.',
     my_seat: 'Tvoje místo', partner_seat: 'Tvůj parťák',
     wild_title: 'Kam dát žolíka?', wild_lead: 'Žolík může v postupce stát dole, nebo nahoře. Pod čtyřku ani nad eso jít nemůže.',
     wild_low: 'Dolů, jako {card}', wild_high: 'Nahoru, jako {card}', cancel: 'Zrušit',
@@ -2294,6 +2456,11 @@ a.mini { text-decoration: none; display: inline-flex; align-items: center; }
     app_windows: "Klikni na ikonu instalace vpravo v adresním řádku. Případně v nabídce prohlížeče najdi „Aplikace“ nebo „Uložit a sdílet“ a zvol instalaci.",
     app_iphone_t: "iPhone a iPad (Safari)",
     app_installed_toast: "Hotovo, aplikace je nainstalovaná.",
+    level_expert: "Expert",
+    level_easy_hint: "Hraje jednoduše: rychle vykládá a drží v ruce málo karet, takže mu občas dojdou.",
+    level_medium_hint: "Hraje rozumně a drží karty v ruce, jen občas odhodí, co by neměl.",
+    level_hard_hint: "Drží karty, hromádku bere s rozmyslem, hlídá, kdy můžeš zavřít, a umí zachránit body.",
+    level_expert_hint: "Před důležitým tahem si zkusí několik možností nanečisto a vybere tu nejlepší, proto chvilku přemýšlí. Do tvých karet nevidí. Jen ve hře proti robotům, u stolu s přáteli za něj hraje těžký robot.",
     bot_say_1: "Uvidíme, kdo se bude smát naposled 😎",
     bot_say_2: "Dobrý tah!",
     bot_say_3: "Hmm, tohle mi nehraje do karet.",
@@ -2631,9 +2798,6 @@ a.mini { text-decoration: none; display: inline-flex; align-items: center; }
     settings_lang: 'Language',
     joker: 'a joker',
     settings_level: 'Bot difficulty', level_easy: 'Easy', level_medium: 'Medium', level_hard: 'Hard',
-    level_easy_hint: 'The bot melds everything right away and takes every pile it can.',
-    level_medium_hint: 'The bot plays sensibly but sometimes discards the wrong card and falls for the black-three trap.',
-    level_hard_hint: 'The bot holds cards back, watches when you can go out, and takes the pile only when it pays off.',
     my_seat: 'Your seat', partner_seat: 'Your partner',
     wild_title: 'Where should the wild card go?', wild_lead: 'The wild card can go at the bottom or the top of the run. It can never go below 4 or above ace.',
     wild_low: 'Bottom, as {card}', wild_high: 'Top, as {card}', cancel: 'Cancel',
@@ -2810,6 +2974,11 @@ a.mini { text-decoration: none; display: inline-flex; align-items: center; }
     app_windows: "Click the install icon on the right of the address bar. Or look for “Apps” or “Save and share” in the browser menu and choose install.",
     app_iphone_t: "iPhone and iPad (Safari)",
     app_installed_toast: "Done, the app is installed.",
+    level_expert: "Expert",
+    level_easy_hint: "Plays simply: melds quickly and keeps few cards, so it sometimes runs out.",
+    level_medium_hint: "Plays sensibly and holds cards back, but sometimes discards the wrong card.",
+    level_hard_hint: "Holds cards, takes the pile with care, watches when you can go out and knows how to save points.",
+    level_expert_hint: "Before important moves it tries several options in its head and picks the best, so it thinks for a moment. It never sees your cards. Only against bots; at online tables the hard bot plays instead.",
     bot_say_1: "We'll see who laughs last 😎",
     bot_say_2: "Nice move!",
     bot_say_3: "Hmm, that doesn't help me.",
@@ -3147,9 +3316,6 @@ a.mini { text-decoration: none; display: inline-flex; align-items: center; }
     settings_lang: 'Idioma',
     joker: 'um joker',
     settings_level: 'Dificuldade dos robôs', level_easy: 'Fácil', level_medium: 'Médio', level_hard: 'Difícil',
-    level_easy_hint: 'O robô baixa tudo na hora e pega todo lixo que puder.',
-    level_medium_hint: 'O robô joga bem, mas às vezes descarta a carta errada e cai na armadilha dos três pretos.',
-    level_hard_hint: 'O robô segura as cartas, fica de olho em quando você pode bater e só pega o lixo quando vale a pena.',
     my_seat: 'Seu lugar', partner_seat: 'Seu parceiro',
     wild_title: 'Onde fica o curinga?', wild_lead: 'O curinga pode ficar embaixo ou em cima da sequência. Nunca abaixo do 4 nem acima do ás.',
     wild_low: 'Embaixo, como {card}', wild_high: 'Em cima, como {card}', cancel: 'Cancelar',
@@ -3326,6 +3492,11 @@ a.mini { text-decoration: none; display: inline-flex; align-items: center; }
     app_windows: "Clique no ícone de instalação à direita da barra de endereço. Ou procure “Apps” ou “Salvar e compartilhar” no menu do navegador e escolha instalar.",
     app_iphone_t: "iPhone e iPad (Safari)",
     app_installed_toast: "Pronto, o aplicativo está instalado.",
+    level_expert: "Expert",
+    level_easy_hint: "Joga de forma simples: baixa rápido e fica com poucas cartas, então às vezes elas acabam.",
+    level_medium_hint: "Joga com bom senso e segura as cartas, mas às vezes descarta a carta errada.",
+    level_hard_hint: "Segura as cartas, pega o lixo com cuidado, fica de olho em quando você pode bater e sabe salvar pontos.",
+    level_expert_hint: "Antes das jogadas importantes ele testa várias opções na cabeça e escolhe a melhor, por isso pensa um pouquinho. Nunca vê suas cartas. Só contra robôs; nas mesas online joga o robô difícil.",
     bot_say_1: "Vamos ver quem ri por último 😎",
     bot_say_2: "Boa jogada!",
     bot_say_3: "Hmm, isso não me ajuda.",
@@ -3766,7 +3937,7 @@ a.mini { text-decoration: none; display: inline-flex; align-items: center; }
   const TOKEN_KEY = 'canastra-bona-token';
   const SITE_URL = 'https://canastra-familia-bona.faldik2033.workers.dev';
   const SUIT_ORDER = { S: 0, H: 1, C: 2, D: 3 };
-  const LEVELS = ['easy', 'medium', 'hard'];
+  const LEVELS = ['easy', 'medium', 'hard', 'expert'];
   const EMOTES = [
     { id: 'hi', e: '👋' }, { id: 'laugh', e: '😂' }, { id: 'slow', e: '🐌' }, { id: 'sleep', e: '😴' },
     { id: 'luck', e: '🍀' }, { id: 'clown', e: '🤡' }, { id: 'fire', e: '🔥' }, { id: 'joker', e: '🃏' },
@@ -4868,7 +5039,7 @@ a.mini { text-decoration: none; display: inline-flex; align-items: center; }
       if (!s) {
         body = `<span class="pname empty">${esc(t('empty_seat'))}</span>
           <span class="seatbtns">${v.me.seat !== i ? `<button class="mini" data-act="sit" data-v="${i}">${esc(t('sit_here'))}</button>` : ''}
-          ${isHost ? LEVELS.map((l) => `<button class="mini ghost" data-act="addbot" data-v="${i}" data-l="${l}">🤖 ${esc(t('level_' + l))}</button>`).join('') : ''}</span>`;
+          ${isHost ? LEVELS.filter((l) => l !== 'expert').map((l) => `<button class="mini ghost" data-act="addbot" data-v="${i}" data-l="${l}">🤖 ${esc(t('level_' + l))}</button>`).join('') : ''}</span>`;
       } else {
         const tags = [];
         if (s.kind === 'bot') tags.push('🤖 ' + t('level_' + s.level));
@@ -5585,7 +5756,8 @@ a.mini { text-decoration: none; display: inline-flex; align-items: center; }
     clearTimeout(botTimer);
     if (!st || overlay || online()) return;
     if ((st.phase === 'draw' || st.phase === 'play' || st.phase === 'cut') && st.players[st.current].isBot) {
-      const base = st.phase === 'draw' ? 1100 : st.phase === 'cut' ? 1500 : 1300; // pomaleji, ať je vidět, jak karty jezdí
+      let base = st.phase === 'draw' ? 1100 : st.phase === 'cut' ? 1500 : 1300; // pomaleji, ať je vidět, jak karty jezdí
+      if (prefs.level === 'expert' && !tut.on && st.phase !== 'cut') base -= 500; // expert si zbytek času „rozmýšlí“
       botTimer = setTimeout(botTick, base);
     }
   }
@@ -5703,7 +5875,8 @@ a.mini { text-decoration: none; display: inline-flex; align-items: center; }
     overlay = name;
   }
   async function createTable(m, bots) {
-    const r = await apiCall('/api/table/create', bots ? { mode: m, bots, level: prefs.level } : { mode: m });
+    // expert přemýšlí v zařízení; u stolu na serveru hraje místo něj těžký robot
+    const r = await apiCall('/api/table/create', bots ? { mode: m, bots, level: prefs.level === 'expert' ? 'hard' : prefs.level } : { mode: m });
     if (r.error) { toast(tr(r.error)); return null; }
     joinTable(r.code);
     return r.code;

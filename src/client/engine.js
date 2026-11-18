@@ -227,7 +227,7 @@
       t.needOpen = t.score >= RULES.openThreshold;
       t.openReq = RULES.openMin;
     }
-    for (const p of st.players) p.hand = [];
+    for (const p of st.players) { p.hand = []; p.known = []; } // known: karty, o kterých všichni ví, že je hráč má (vzal je z hromádky)
     st.cutInfo = null;
     st.current = (st.dealer + 1) % n;
     if (st.family) {
@@ -477,6 +477,7 @@
     }
     st.turn.laid += sumValue(chk.cards);
     st.turn.newIds = st.pile.map((c) => c.id);
+    p.known = (p.known || []).concat(st.pile.map((c) => c.id));
     p.hand = p.hand.concat(st.pile);
     st.pile = [];
     st.turn.mustMeld = null;

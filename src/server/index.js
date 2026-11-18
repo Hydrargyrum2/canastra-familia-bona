@@ -662,7 +662,7 @@ export class Table extends DurableObject {
       game: null, chat: [], ready: {}, timers: {}, recorded: false, lastResult: null,
     };
     this.s.seats[0] = { kind: 'human', id: host.id, name: host.name, connected: false, botControl: false };
-    const level = opts && LEVELS.includes(opts.level) ? opts.level : 'medium';
+    const level = opts && opts.level === 'expert' ? 'hard' : opts && LEVELS.includes(opts.level) ? opts.level : 'medium'; // expert jen v zařízení
     const bots = opts && Array.isArray(opts.bots) ? opts.bots.map(Number).filter((i) => i > 0 && i < n) : [];
     bots.forEach((i, k) => { this.s.seats[i] = { kind: 'bot', name: BOT_NAMES[k % BOT_NAMES.length], level }; });
     await this.save();
@@ -774,7 +774,7 @@ export class Table extends DurableObject {
         if (!(to >= 0 && to < s.seats.length) || s.seats[to] !== null) return err('seat_taken');
         const used = new Set(s.seats.filter(Boolean).map((x) => x.name));
         const name = BOT_NAMES.find((n) => !used.has(n)) || 'Robot';
-        s.seats[to] = { kind: 'bot', name, level: LEVELS.includes(m.level) ? m.level : 'medium' };
+        s.seats[to] = { kind: 'bot', name, level: m.level === 'expert' ? 'hard' : LEVELS.includes(m.level) ? m.level : 'medium' };
         break;
       }
       case 'kick': {

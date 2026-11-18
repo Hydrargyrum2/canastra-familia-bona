@@ -8,7 +8,7 @@
   const TOKEN_KEY = 'canastra-bona-token';
   const SITE_URL = 'https://canastra-familia-bona.faldik2033.workers.dev';
   const SUIT_ORDER = { S: 0, H: 1, C: 2, D: 3 };
-  const LEVELS = ['easy', 'medium', 'hard'];
+  const LEVELS = ['easy', 'medium', 'hard', 'expert'];
   const EMOTES = [
     { id: 'hi', e: '👋' }, { id: 'laugh', e: '😂' }, { id: 'slow', e: '🐌' }, { id: 'sleep', e: '😴' },
     { id: 'luck', e: '🍀' }, { id: 'clown', e: '🤡' }, { id: 'fire', e: '🔥' }, { id: 'joker', e: '🃏' },
@@ -1110,7 +1110,7 @@
       if (!s) {
         body = `<span class="pname empty">${esc(t('empty_seat'))}</span>
           <span class="seatbtns">${v.me.seat !== i ? `<button class="mini" data-act="sit" data-v="${i}">${esc(t('sit_here'))}</button>` : ''}
-          ${isHost ? LEVELS.map((l) => `<button class="mini ghost" data-act="addbot" data-v="${i}" data-l="${l}">🤖 ${esc(t('level_' + l))}</button>`).join('') : ''}</span>`;
+          ${isHost ? LEVELS.filter((l) => l !== 'expert').map((l) => `<button class="mini ghost" data-act="addbot" data-v="${i}" data-l="${l}">🤖 ${esc(t('level_' + l))}</button>`).join('') : ''}</span>`;
       } else {
         const tags = [];
         if (s.kind === 'bot') tags.push('🤖 ' + t('level_' + s.level));
@@ -1827,7 +1827,8 @@
     clearTimeout(botTimer);
     if (!st || overlay || online()) return;
     if ((st.phase === 'draw' || st.phase === 'play' || st.phase === 'cut') && st.players[st.current].isBot) {
-      const base = st.phase === 'draw' ? 1100 : st.phase === 'cut' ? 1500 : 1300; // pomaleji, ať je vidět, jak karty jezdí
+      let base = st.phase === 'draw' ? 1100 : st.phase === 'cut' ? 1500 : 1300; // pomaleji, ať je vidět, jak karty jezdí
+      if (prefs.level === 'expert' && !tut.on && st.phase !== 'cut') base -= 500; // expert si zbytek času „rozmýšlí“
       botTimer = setTimeout(botTick, base);
     }
   }
@@ -1945,7 +1946,8 @@
     overlay = name;
   }
   async function createTable(m, bots) {
-    const r = await apiCall('/api/table/create', bots ? { mode: m, bots, level: prefs.level } : { mode: m });
+    // expert přemýšlí v zařízení; u stolu na serveru hraje místo něj těžký robot
+    const r = await apiCall('/api/table/create', bots ? { mode: m, bots, level: prefs.level === 'expert' ? 'hard' : prefs.level } : { mode: m });
     if (r.error) { toast(tr(r.error)); return null; }
     joinTable(r.code);
     return r.code;
