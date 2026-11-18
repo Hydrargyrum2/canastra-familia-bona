@@ -1492,6 +1492,11 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
 /* Kanasta – robot. Vidí jen svou ruku a veřejné informace na stole
    (vykládky, počty karet v rukou, odhazovací hromádku a co kdo odhodil).
 
+   Verze 2 (plán tahu): každý tah si robot určí fázi – stavím (drží karty, bez canasty
+   nejde pod hranici ruky, kromě lákavé vykládky), otevírám (nad 2 000 jen do splnění limitu),
+   zavírám (má canastu a může jít na nulu) nebo zachraňuju body (soupeř může hned zavřít).
+   Profil obtížnosti a herní styl jsou v PROFILES a STYLES, vyladěné turnaji v tools/arena.js.
+
    Taktika, zhruba jako u člověka:
    - Dokud soupeř nehrozí zavřením, drží kombinace v ruce: soupeř neví, co sbírá,
      a sám má z čeho brát hromádku. Vykládá hlavně to, co hned dělá canastu
@@ -1692,6 +1697,116 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
     return st.players[pi].hand.length >= 16 ? 'build' : 'hold';
   }
 
+  // ---------- plán tahu (verze 2) ----------
+  // Profil = jak robot hraje. floor: kolik karet si bez canasty drží v ruce; tempt: kolik bodů musí vykládka
+  // stát, aby kvůli ní hranici porušil (malé číslo = snadno podlehne a pak uvízne na dvou kartách);
+  // starters: kolik vykládek chce mít brzy na stole (háčky na hromádku); wildSave: jak moc šetří žolíky na canastu;
+  // pileBias: chuť na hromádku; rebuild: o kolik víc chce hromádku, když mu dochází ruka; dumpAt: od jakého
+  // nebezpečí sype všechno; discard: chytré nebo jednoduché odhazování; noise: chyby při odhazování.
+  // Vyladěno turnaji robot proti robotovi (tools/arena.js): těžký vyhrává se starým těžkým ~70 % (1 na 1)
+  // a uvízne na dvou kartách bez canasty jen asi v 5 % kol; střední asi ve 12 %, lehký asi ve třetině kol.
+  const PROFILES = {
+    easy: { floor: 4, tempt: 80, starters: 0, wildSave: 0.8, pileBias: 0, pileAny: false, rebuild: 20, dumpAt: 2, dumpKeep: 2, openCare: 0.5, trapCost: 0, discard: 'simple', noise: 0 },
+    medium: { floor: 4, tempt: 60, starters: 0, wildSave: 1, pileBias: 0, pileAny: false, rebuild: 60, dumpAt: 3, dumpKeep: 2, openCare: 1, trapCost: 0, discard: 'smart', noise: 90 },
+    hard: { floor: 4, tempt: 160, starters: 0, wildSave: 1, pileBias: -40, pileAny: false, rebuild: 60, dumpAt: 3, dumpKeep: 3, openCare: 1, trapCost: 200, discard: 'smart', noise: 0, four: { pileBias: 0 } },
+  };
+  // Herní styly: každý robot dostane na hru jeden, ať nehrají všichni stejně. Rozdíly jsou malé,
+  // aby žádný styl nebyl výrazně slabší (ověřeno turnaji).
+  const STYLES = {
+    steady: {},
+    careful: { floor: 1, pileBias: -10 }, // drží víc karet, hromádku bere opatrněji
+    collector: { pileBias: 10, rebuild: 20 }, // rád sbírá odhazovací hromádku
+    builder: { starters: 1 }, // vykládá dřív, staví víc vykládek
+  };
+  const STYLE_NAMES = Object.keys(STYLES);
+  function withStyle(base, name) {
+    const out = Object.assign({}, base);
+    const d = STYLES[name] || {};
+    for (const k of Object.keys(d)) out[k] = (out[k] || 0) + d[k];
+    return out;
+  }
+  let P = PROFILES.hard;
+
+  // Hodnota akce pro pokušení: body karet + postup ke canastě.
+  function actionValue(st, pi, a) {
+    const hand = st.players[pi].hand;
+    let v = 0;
+    for (const id of a.ids) { const c = hand.find((x) => x.id === id); if (c) v += E.cardValue(c); }
+    if (a.len >= 5 && a.before < 5) v += 25 * (a.len - 4);
+    return v;
+  }
+  // Další vykládací akce podle plánu: zavírám / zachraňuju body / stavím s pojistkou.
+  function planAction(st, pi, phase) {
+    const p = st.players[pi];
+    const team = st.teams[p.team];
+    const n = p.hand.length;
+    const hasCan = E.hasCanasta(team);
+    const floor = hasCan ? 2 : (P.floor2 != null && dangerLevel(st, pi) >= 2 ? Math.min(P.floor, P.floor2) : P.floor);
+    if (phase === 'close') return pickAction(st, pi, 'all'); // stejná cesta, jakou simulace našla zavření
+    if (phase === 'open') phase = E.needsOpen(team) && st.turn.laid < E.openReq(team) ? 'dump' : 'build';
+    const dump = phase === 'dump';
+    for (const a of actions(st, pi)) {
+      const after = n - a.ids.length;
+      const makesCan = a.before < 7 && a.len >= 7;
+      const growsClean = a.before >= 7 && a.clean;
+      if (a.kind === 'must') return a;
+      if (makesCan) return a; // canasta = možnost zavřít
+      if (dump) {
+        if (a.kind === 'wildAdd' && !(hasCan && n <= 3)) continue;
+        // i při sypání si bez canasty nechá pár karet, ať nezůstane bezmocný (když soupeř nezavře)
+        if (!hasCan && after < (P.dumpKeep || 2) && !(E.needsOpen(team) && st.turn.laid < E.openReq(team))) continue;
+        return a;
+      }
+      const isWildMove = a.kind === 'newWild' || a.kind === 'wildAdd' || a.kind === 'wildCanasta';
+      if (isWildMove && Math.random() < P.wildSave) continue; // žolík na dokončení canasty
+      if (a.kind === 'wildAdd') continue;
+      if (growsClean && after >= 2) return a; // +100 za každou kartu navíc
+      const tempting = after >= 2 && actionValue(st, pi, a) >= P.tempt;
+      if (a.kind === 'extend') {
+        if (after >= floor || tempting || n >= 15) return a;
+      } else if (a.kind === 'new' || a.kind === 'newWild') {
+        const starter = team.melds.length < P.starters || a.len >= 4 || hasCan;
+        if ((after >= floor && starter) || tempting || n >= 16) return a;
+      }
+    }
+    return null;
+  }
+  function planPhase(st, pi) {
+    const team = st.teams[st.players[pi].team];
+    // farm: hráč, který schválně nezavírá a dál staví (na zkoušku, jak se robot brání)
+    const farming = P.farm && st.stock.length > P.farm && team.melds.filter((m) => E.isCanasta(m)).length < 3;
+    if (!farming && simulate(st, pi, 'all').canClose) return 'close';
+    if (dangerLevel(st, pi) >= P.dumpAt) return 'dump';
+    return 'build';
+  }
+  function simulatePlan(st, pi, phase) {
+    const c = clone(st);
+    for (let i = 0; i < 40 && c.phase === 'play'; i++) {
+      const a = planAction(c, pi, phase);
+      if (!a || !apply(c, pi, a).ok) break;
+    }
+    const cp = c.players[pi];
+    return { laid: c.turn ? c.turn.laid : 0, wentOut: c.phase !== 'play', hand: cp.hand.length, can: E.hasCanasta(c.teams[cp.team]) };
+  }
+  function chooseMeldAction2(st, pi) {
+    const team = st.teams[st.players[pi].team];
+    let phase = st.turn.bot && st.turn.bot.phase || planPhase(st, pi);
+    if (st.turn.bot) st.turn.bot.phase = phase;
+    if (E.needsOpen(team)) {
+      let sim = simulatePlan(st, pi, phase);
+      const committed = st.turn && st.turn.laid > 0;
+      if (!sim.wentOut && sim.laid < E.openReq(team) && phase === 'build' && (committed || dangerLevel(st, pi) >= (P.openForce || 1))) {
+        phase = 'open';
+        if (st.turn.bot) st.turn.bot.phase = phase;
+        sim = simulatePlan(st, pi, phase);
+      }
+      if (!sim.wentOut && sim.laid < E.openReq(team)) return null;
+      // otevřít za cenu, že zbydou dvě karty bez canasty, jen když hrozí konec nebo už leží hromádka
+      if (!sim.wentOut && !sim.can && sim.hand <= 2 && !committed && dangerLevel(st, pi) < (P.openForce || 2) && Math.random() < P.openCare) return null;
+    }
+    return planAction(st, pi, phase);
+  }
+
   function chooseMeldAction(st, pi) {
     const team = st.teams[st.players[pi].team];
     let mode = chooseMode(st, pi);
@@ -1753,6 +1868,8 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
     if (sim.canClose) return 1000;
     const team = c.teams[c.players[pi].team];
     if (E.needsOpen(team) && sim.laid < E.openReq(team)) return -Infinity;
+    // když by po vzetí musel (kvůli prvnímu vyložení) vyložit skoro všechno a zůstal bez canasty, je to past
+    if (V2 && P.trapCost && E.needsOpen(st.teams[p.team]) && !E.hasCanasta(team) && sim.st.players[pi].hand.length <= 2 && d < 2) return -P.trapCost;
     const handAfter = new Set(sim.st.players[pi].hand.map((x) => x.id));
     let gain = 20 + E.cardValue(top);
     let risk = 0;
@@ -1778,6 +1895,13 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
     const choice = pileChoice(st, pi);
     if (!choice) return null;
     const sc = pileScore(st, pi, choice);
+    if (V2 && P) {
+      if (sc === -Infinity) return null;
+      if (P.pileAny) return choice;
+      const p = st.players[pi];
+      const short = E.hasCanasta(st.teams[p.team]) ? 0 : Math.max(0, P.floor + 2 - p.hand.length);
+      return sc + P.pileBias + P.rebuild * short > 0 ? choice : null;
+    }
     // lehký i střední robot bere hromádku, kdykoli může (na past s černými trojkami skočí)
     if (!TUNE.pileOn || LV !== 'hard') return sc > -Infinity ? choice : null;
     return sc > 0 ? choice : null;
@@ -1830,7 +1954,7 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
       }
       // když soupeř brzy zavře, zbavit se drahých karet
       if (d >= 2) s += E.cardValue(c) / 2;
-      if (LV === 'medium') s += noise(90);
+      if (V2 ? P.noise : LV === 'medium') s += noise(V2 ? P.noise : 90);
       return { id: c.id, s };
     });
     scored.sort((a, b) => b.s - a.s || a.id - b.id);
@@ -1872,8 +1996,13 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
     return hand.some((x) => x.id !== c.id && !E.isWild(x) && !E.isThree(x) &&
       (x.r === c.r || (x.s === c.s && Math.abs(E.pos(x) - E.pos(c)) <= 2)));
   }
-  function step(st, pi, level) {
+  let V2 = true;
+  function step(st, pi, level, profile) {
     LV = level === 'easy' || level === 'medium' ? level : 'hard';
+    const pl = st.players[pi];
+    const style = (profile && profile.style) || pl.botStyle || (pl.botStyle = STYLE_NAMES[Math.floor(Math.random() * STYLE_NAMES.length)]);
+    P = Object.assign(withStyle(Object.assign({}, PROFILES[LV], st.players.length > 2 ? PROFILES[LV].four : null), style), profile || {});
+    V2 = !(profile && profile.v1);
     if (st.current !== pi) return { ok: false, error: E.M('not_your_turn') };
     if (st.phase === 'cut') {
       // zkušený robot míří přesně, slabší se trochu splete; karty se pak ještě svezou (engine)
@@ -1899,14 +2028,15 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
     const bt = st.turn.bot || (st.turn.bot = { noMeld: false, steps: 0 });
     bt.steps++;
     if (!bt.noMeld && bt.steps < 40) {
-      const a = chooseMeldAction(st, pi);
+      const a = V2 ? chooseMeldAction2(st, pi) : chooseMeldAction(st, pi);
       if (a) {
         const r = apply(st, pi, a);
         if (r.ok) return r;
         bt.noMeld = true;
       }
     }
-    for (const id of (TUNE.discardOn && LV !== 'easy' ? discardOrder(st, pi) : simpleDiscardOrder(st, pi))) {
+    const smart = V2 ? P.discard === 'smart' : TUNE.discardOn && LV !== 'easy';
+    for (const id of (smart ? discardOrder(st, pi) : simpleDiscardOrder(st, pi))) {
       if (!E.discardError(st, pi, id)) return E.discard(st, pi, id);
     }
     // nepovedené první vyložení: karty zpět do ruky (limit stoupne), pak jen odhodit; jinak nouzově vrátit tah
@@ -1918,7 +2048,7 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
   // Zpětná kompatibilita: „hladová“ akce (používají ji testy).
   const greedyAction = (st, pi) => pickAction(st, pi, 'all');
 
-  const api = { step, candidateMelds, greedyAction, discardOrder, wantsPile, pileChoice, dangerLevel, chooseMode, cardFits, TUNE };
+  const api = { step, candidateMelds, greedyAction, discardOrder, wantsPile, pileChoice, dangerLevel, chooseMode, cardFits, TUNE, PROFILES, STYLES };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.Bot = api;
 })(typeof window !== 'undefined' ? window : globalThis);

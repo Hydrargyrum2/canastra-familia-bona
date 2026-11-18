@@ -153,6 +153,8 @@ async def main():
         check(True, 'výuka: hra běží podle nápovědy (' + log + ')')
         if await C.locator('#overlay.show [data-act=close]').count(): await C.click('#overlay.show [data-act=close]')
         elif await C.locator('#overlay.show [data-act=nextround]').count(): await C.click('#overlay.show [data-act=nextround]')
+        if await C.locator('#overlay.show[data-kind=wild] [data-act=wildpick]').count():  # náhodná hra: volba žolíka
+            await C.locator('#overlay.show [data-act=wildpick]').first.click()
         await C.click('[data-act=menu]')
         await C.click('#overlay [data-act=tostart]')
         await C.wait_for_selector('[data-act=privacy]')
