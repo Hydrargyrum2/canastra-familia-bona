@@ -257,6 +257,8 @@
     E.startRound(st);
     sel.clear();
     botFails = 0;
+    localChat.length = 0;
+    net.unread = 0;
     cutAim = null;
     cutAuto = false;
     cutShown = null;
@@ -1372,7 +1374,8 @@
     const melds = st.teams.reduce((n, tm) => n + tm.melds.length, 0);
     const cans = st.teams.reduce((n, tm) => n + tm.melds.filter((m) => E.isCanasta(m)).length, 0);
     const last = st.log.length ? st.log[st.log.length - 1] : null;
-    const sig = { log: JSON.stringify(last) + '#' + st.log.length, melds, cans, phase: st.phase, mine: !!myTurn(), round: st.round, key: (online() ? 'o' : 'l') + mode };
+    const sig = { log: JSON.stringify(last) + '#' + st.log.length, melds, cans, phase: st.phase, mine: !!myTurn(), round: st.round, key: (online() ? 'o' : 'l') + mode,
+      cansUs: st.teams[US()] ? st.teams[US()].melds.filter((m) => E.isCanasta(m)).length : 0 };
     const prev = lastSig;
     lastSig = sig;
     if (!prev || prev.key !== sig.key || sig.phase === 'waiting') return;
@@ -1380,6 +1383,7 @@
       if (sig.phase === 'gameOver') S.sfx(st.winner === US() ? 'win' : 'lose'); else S.sfx('round');
       return;
     }
+    if (!online()) botBanter(prev, sig, last);
     if (sig.cans > prev.cans && sig.round === prev.round) S.sfx('canasta');
     else if (sig.melds > prev.melds && sig.round === prev.round) S.sfx('meld');
     else if (sig.log !== prev.log && last) {
@@ -1401,8 +1405,13 @@
   }
 
   // ---------- chat, emoty, pozvánky ----------
+  // chat i ve hře proti robotům (jen v tomto zařízení; roboti občas odpoví smajlíkem nebo větou)
+  const localChat = [];
+  const chatOn = () => online() || (!!st && !tut.on && st.phase !== 'waiting');
+  const chatMsgs = () => (online() ? net.chat : localChat);
+  const isMineMsg = (m) => (online() ? !!(net.user && net.view && m.seat === net.view.me.seat && m.seat >= 0) : m.seat === ME);
   function renderChrome() {
-    const inT = online();
+    const inT = chatOn();
     const btn = $('#chatBtn');
     btn.hidden = !inT;
     btn.innerHTML = `💬${net.unread ? `<span class="nb">${net.unread > 9 ? '9+' : net.unread}</span>` : ''}`;
@@ -1437,7 +1446,7 @@
   function chatLine(m) {
     if (m.kind === 'sys') return `<li class="sys">${esc(t('sys_' + m.k, m.p))}</li>`;
     if (isMuted(m)) return '';
-    const mine = net.user && net.view && m.seat === net.view.me.seat && m.seat >= 0;
+    const mine = isMineMsg(m);
     const who = m.uid && net.user && m.uid !== net.user.id ? `<button class="cname" data-act="profile" data-v="${m.uid}">${esc(m.name)}</button>` : `<b>${esc(m.name)}</b>`;
     if (m.kind === 'emote') {
       const x = EMOTES.find((e) => e.id === m.id);
@@ -1448,19 +1457,82 @@
   function renderChatList() {
     const list = $('#chatList');
     if (!list) return;
-    list.innerHTML = net.chat.map(chatLine).join('') || `<li class="sys">${esc(t('chat_empty'))}</li>`;
+    list.innerHTML = chatMsgs().map(chatLine).join('') || `<li class="sys">${esc(t('chat_empty'))}</li>`;
     list.scrollTop = list.scrollHeight;
   }
   function onChat(m, fresh) {
-    net.chat.push(m);
-    if (net.chat.length > 150) net.chat.shift();
+    const list = chatMsgs();
+    list.push(m);
+    if (list.length > 150) list.shift();
     if (isMuted(m)) { if (net.chatOpen) renderChatList(); return; }
     if (net.chatOpen) renderChatList();
     else if (fresh && m.kind !== 'sys') net.unread++;
     if (fresh && m.kind === 'emote') playEmote(m);
-    if (fresh && m.kind === 'msg' && !net.chatOpen && !(net.view && m.seat === net.view.me.seat)) toast(m.name + ': ' + m.text, 'info');
+    if (fresh && m.kind === 'msg' && !net.chatOpen && !isMineMsg(m)) toast(m.name + ': ' + m.text, 'info');
     if (fresh && m.kind === 'sys') toast(t('sys_' + m.k, m.p), 'info');
     renderChrome();
+  }
+
+  // ---------- chat s roboty ----------
+  let botChatAt = 0; // kdy naposled robot sám od sebe něco řekl (ať nespamuje)
+  const botSeat = (team) => { const i = st.players.findIndex((p, k) => k !== ME && p.isBot && (team == null || p.team === team)); return i; };
+  const oppBot = () => botSeat(1 - US());
+  const partnerBot = () => st.players.findIndex((p, k) => k !== ME && p.isBot && p.team === US());
+  function botSays(seat, kind, val, delay) {
+    if (seat < 0 || !st) return;
+    const game = st;
+    setTimeout(() => {
+      if (st !== game || online() || !st.players[seat]) return;
+      const m = { kind, seat, name: st.players[seat].name };
+      if (kind === 'emote') m.id = val; else m.text = val;
+      onChat(m, true);
+    }, delay == null ? 900 + Math.random() * 1100 : delay);
+  }
+  const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+  const botLine = () => t('bot_say_' + (1 + Math.floor(Math.random() * 8)));
+  // sám od sebe jen občas a s odstupem
+  function botMaybe(seat, kind, val, chance) {
+    if (seat < 0 || Math.random() > chance || Date.now() - botChatAt < 7000) return;
+    botChatAt = Date.now();
+    botSays(seat, kind, val);
+  }
+  function localSay(text) {
+    onChat({ kind: 'msg', seat: ME, name: st.players[ME].name, text }, true);
+    const seat = oppBot();
+    const low = text.toLowerCase();
+    if (/(^|\s)(ahoj|čau|cau|nazdar|zdravím|zdravim|dobrý den|hi|hello|hey|olá|ola|oi|bom dia|boa noite)(\s|!|$)/.test(low)) botSays(seat, 'emote', 'hi');
+    else if (/(gg|dobrá hra|dobra hra|díky|diky|thanks|thank you|obrigad|boa partida|good game)/.test(low)) botSays(seat, 'emote', 'gg');
+    else if (/(haha|lol|😂|🤣)/.test(low)) botSays(seat, 'emote', pick(['laugh', 'cool']));
+    else if (Math.random() < 0.6) botSays(seat, 'msg', botLine(), 1200 + Math.random() * 1200);
+    else botSays(seat, 'emote', pick(['cool', 'laugh', 'luck', 'fire']));
+  }
+  function localEmote(id) {
+    onChat({ kind: 'emote', seat: ME, name: st.players[ME].name, id }, true);
+    const seat = oppBot();
+    const answer = { hi: 'hi', gg: 'gg', laugh: pick(['laugh', 'cool']), slow: 'sleep', sleep: 'slow', clown: pick(['clown', 'laugh']), cry: pick(['laugh', 'cool']),
+      fire: 'cool', cool: pick(['cool', 'fire']), luck: 'luck', joker: 'joker', black3: pick(['cry', 'laugh']), tomato: Math.random() < 0.5 ? 'tomato' : 'cry' }[id];
+    if (answer && Math.random() < 0.85) botSays(seat, 'emote', answer);
+  }
+  function botBanter(prev, sig, last) {
+    if (tut.on || !st || sig.round !== prev.round && sig.phase !== 'roundOver' && sig.phase !== 'gameOver') return;
+    if (sig.phase !== prev.phase && (sig.phase === 'roundOver' || sig.phase === 'gameOver')) {
+      const r = st.lastRound;
+      const usWon = r && r.teams[US()].total >= r.teams[1 - US()].total;
+      if (sig.phase === 'gameOver') botMaybe(oppBot(), 'emote', 'gg', 0.9);
+      else botMaybe(oppBot(), 'emote', usWon ? pick(['cry', 'gg']) : pick(['cool', 'laugh']), 0.6);
+      return;
+    }
+    if (sig.cans > prev.cans) {
+      if (sig.cansUs > prev.cansUs) { if (partnerBot() >= 0 && Math.random() < 0.5) botMaybe(partnerBot(), 'emote', 'fire', 0.5); else botMaybe(oppBot(), 'emote', pick(['cry', 'clown']), 0.3); }
+      else botMaybe(oppBot(), 'emote', pick(['fire', 'cool']), 0.4);
+      return;
+    }
+    if (sig.log !== prev.log && last && last.k === 'log_take_pile' && last.p && last.p.n >= 6) {
+      if (last.p.pi === ME || (st.players[last.p.pi] && st.players[last.p.pi].team === US())) botMaybe(oppBot(), 'emote', pick(['cry', 'slow']), 0.35);
+      else botMaybe(last.p.pi, 'emote', pick(['laugh', 'fire']), 0.35);
+    } else if (sig.log !== prev.log && last && last.k === 'log_cut_hit') {
+      botMaybe(last.p.pi === ME ? oppBot() : last.p.pi, 'emote', last.p.pi === ME ? 'clown' : 'cool', 0.6);
+    }
   }
 
   // Kde na obrazovce sedí hráč (pro animace emotů).
@@ -2096,7 +2168,7 @@
         return;
       case 'chatopen': net.chatOpen = !net.chatOpen; net.unread = 0; renderChrome(); if (net.chatOpen) setTimeout(() => { const i = $('#chatInput'); if (i) i.focus(); }, 30); return;
       case 'chatclose': net.chatOpen = false; renderChrome(); return;
-      case 'emote': sendTable({ t: 'emote', id: v }); return;
+      case 'emote': if (online()) sendTable({ t: 'emote', id: v }); else localEmote(v); return;
       case 'nextround':
         if (online()) { sendTable({ t: 'next' }); break; }
         if (st.phase === 'roundOver') { E.startRound(st); sel.clear(); }
@@ -2336,7 +2408,8 @@
     else if (f.id === 'chatForm') {
       const i = f.querySelector('#chatInput');
       const text = i.value.trim();
-      if (text) { sendTable({ t: 'chat', text }); i.value = ''; }
+      if (text && online()) { sendTable({ t: 'chat', text }); i.value = ''; }
+      else if (text) { localSay(text); i.value = ''; }
     } else if (f.id === 'nameForm') {
       apiCall('/api/profile/name', { name: f.querySelector('#newName').value }).then((r) => {
         net.formMsg.name = r.error ? { text: tr(r.error) } : { ok: true, text: t('saved') };
