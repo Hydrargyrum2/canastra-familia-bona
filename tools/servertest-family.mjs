@@ -114,6 +114,10 @@ async function main() {
   const disc = r.players[cutter].hand.find((c) => !E.isWild(c));
   await act(C, { type: 'discard', id: disc.id });
   check(lastState(C).game.pile.length === 2 && lastState(C).game.current !== cutter, 'tah skončil odhozením, odmítnutá karta je pod ní');
+  const pvMsg = await O.wait((m) => m.t === 'state' && m.s.game && m.s.game.pile.length === 2, 3000).catch(() => null);
+  const pv = pvMsg ? pvMsg.s.game.pile : lastState(O).game.pile;
+  check(pv[0].hidden && !pv[0].r && pv[1].r === disc.r, 'z hromádky je vidět jen vrchní karta, spodní je skrytá: ' + JSON.stringify(pv));
+  check(lastState(O).game.log.length <= 8, 'historie tahů se online neposílá celá');
   const og = lastState(O).game;
   if (og.phase === 'draw') {
     await act(O, { type: 'draw' });

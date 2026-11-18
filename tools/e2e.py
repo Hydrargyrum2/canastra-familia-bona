@@ -55,6 +55,8 @@ async def main():
         await A.screenshot(path=SH + 'a-room.png')
         await A.click('[data-act=start]')
         await pass_cut(A, B)
+        links = await A.evaluate("[...document.querySelectorAll('#center .linkbtn')].map(e => e.innerText).join(' | ')")
+        print('  ' + ('✓' if 'Co se stalo' not in links and 'Celá hromádka' not in links else '✗') + ' online bez historie a bez celé hromádky: ' + links)
         await A.wait_for_selector('#hand .hc', timeout=8000)
         await B.wait_for_selector('#hand .hc', timeout=8000)
         print('hra běží; A karet', await A.locator('#hand .hc').count(), '| B karet', await B.locator('#hand .hc').count())

@@ -4148,8 +4148,7 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
         <span class="lbl">${esc(t('pile'))}</span>
       </button>
       <div class="side-links">
-        <button class="linkbtn" data-act="showpile">${esc(t('whole_pile'))}</button>
-        <button class="linkbtn" data-act="log">${esc(t('what_happened'))}</button>
+        ${online() ? '' : `<button class="linkbtn" data-act="log">${esc(t('what_happened'))}</button>`}
         <button class="linkbtn" data-act="rules">${esc(t('rules'))}</button>
       </div>
       <div class="announce">${st.log.length ? esc(tr(st.log[st.log.length - 1])) : ''}</div>`;
@@ -4574,13 +4573,6 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
       </div>`;
   }
 
-  function pileHTML() {
-    const cards = st.pile.slice().reverse();
-    return `<h2>${esc(t('pile_title'))}</h2>
-      <p>${esc(cards.length ? t('pile_count', { n: cards.length }) : t('pile_empty_txt'))}</p>
-      <div class="pilegrid">${cards.map((c) => cardFace(c)).join('')}</div>
-      <div class="stackbtns"><button class="btn" data-act="close">${esc(t('close'))}</button></div>`;
-  }
   function logHTML() {
     const lines = st.log.slice(-30).reverse();
     return `<h2>${esc(t('log_title'))}</h2><ul class="logl">${lines.map((l) => `<li>${esc(tr(l))}</li>`).join('')}</ul>
@@ -4908,8 +4900,7 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
     else if (overlay === 'settings') html = settingsHTML();
     else if (overlay === 'app') html = appHTML();
     else if (overlay === 'rules') html = D().rules_html + `<div class="stackbtns"><button class="btn" data-act="back">${esc(t('back'))}</button></div>`;
-    else if (overlay === 'pile') html = pileHTML();
-    else if (overlay === 'log') html = logHTML();
+    else if (overlay === 'log') html = online() ? (overlay = null, '') : logHTML();
     else if (overlay === 'round') html = roundHTML();
     else if (overlay === 'wild') html = wildHTML();
     else if (overlay === 'auth') html = authHTML();
@@ -5099,9 +5090,8 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
         newInHand.forEach((id, i) => { const e = handEl(id); if (e) fly(e.querySelector('.card').outerHTML, snap.pile, rectOf(e.querySelector('.card')), 120 + 45 * i, e); });
       } else {
         // karty z hromádky (jsou vidět všem) odjedou k soupeři, vrchní šla do vykládky
-        const rest = prev.pile.filter((c) => c.id !== prev.top).slice(-6).reverse();
-        if (!rest.length) fly(backFace(), snap.pile, seatRect(pi), 120, null);
-        rest.forEach((c, i) => fly(cardFace(c), snap.pile, seatRect(pi), 120 + 80 * i, null));
+        const rest = Math.min(6, Math.max(1, prev.pile.length - 1));
+        for (let i = 0; i < rest; i++) fly(backFace(), snap.pile, seatRect(pi), 120 + 80 * i, null);
       }
     }
   }
@@ -5841,8 +5831,7 @@ details.danger-zone summary { color: #ffb3b0; cursor: pointer; font-weight: 600;
         break;
       case 'settings': openPage('settings'); break;
       case 'back': overlay = nav.length ? nav.pop() : null; if (overlay === 'profile' && net.profileId) openProfile(net.profileId); break;
-      case 'showpile': overlay = 'pile'; break;
-      case 'log': overlay = 'log'; break;
+      case 'log': if (!online()) overlay = 'log'; break;
       case 'close':
         nav = [];
         overlay = online() && net.view && net.view.status === 'waiting' ? 'room' : null;

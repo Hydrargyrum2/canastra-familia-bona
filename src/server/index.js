@@ -1039,14 +1039,15 @@ export class Table extends DurableObject {
     return {
       players: g.players.map((p, i) => ({ name: p.name, team: p.team, isBot: this.isBotSeat(i), handCount: p.hand.length, hand: i === seat ? p.hand : null })),
       teams: g.teams,
-      pile: g.pile,
+      // z hromádky je vidět jen vrchní karta (zbytek si hráči musí pamatovat), pod ní jen počet
+      pile: g.pile.map((c, i) => (i === g.pile.length - 1 ? c : { id: -1 - i, hidden: true })),
       stockCount: g.stock.length,
       current: g.current,
       dealer: g.dealer,
       phase: g.phase,
       round: g.round,
       nextMeldId: g.nextMeldId,
-      log: g.log.slice(-40),
+      log: g.log.slice(-8), // jen poslední tahy (oznámení, animace); historie „Co se stalo“ je jen proti robotům
       lastRound: g.lastRound,
       winner: g.winner,
       cutInfo: g.cutInfo || null,
