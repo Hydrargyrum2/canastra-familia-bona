@@ -738,6 +738,8 @@ a.mini { text-decoration: none; display: inline-flex; align-items: center; }
 #coach .tr ul.tralt li { margin: 3px 0; }
 #coach .tr ul.tralt span { color: #cfc6ad; }
 #coach .tr .trfb { font-weight: 600; }
+#coach .tr .trsel { font-size: 12.5px; color: #e9dfc0; margin-top: 4px; padding-top: 4px; border-top: 1px dashed rgba(241,195,76,0.35); }
+#coach .tr .trsel span { color: #cfc6ad; }
 #coach .trmore { font-size: 12.5px; padding: 0; }
 #coach { max-height: 34vh; overflow-y: auto; }
 #coach .tr .trfoot { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
@@ -2353,9 +2355,10 @@ a.mini { text-decoration: none; display: inline-flex; align-items: center; }
           plans.push({ key: 'plan' + plans.length, kind: acts.length ? 'lay' : 'hold', acts, ids: [].concat(...acts.map((a) => a.ids)), penalty: acts.trap ? EXPERT.trap : 0,
             run: (c) => applyPlan(c, pi, acts) && finishTurn(c, pi), reasons: planReasons(st, pi, acts, sit) });
         }
-        if (plans.length > 1) parts.push({ name: 'options', opts: plans, ev: evaluator(st, pi, plans, cfg) });
+        if (plans.length > 1 && !cfg.discardOnly) parts.push({ name: 'options', opts: plans, ev: evaluator(st, pi, plans, cfg) });
         const holdPossible = plans.some((p) => p.kind === 'hold');
-        const legal = holdPossible ? discardOrder(st, pi).filter((id) => !E.discardError(st, pi, id)).slice(0, 4) : [];
+        // cfg.discards: vlastní seznam karet k porovnání (trenér: karta, kterou si hráč označil)
+        const legal = holdPossible ? (cfg.discards || discardOrder(st, pi).filter((id) => !E.discardError(st, pi, id)).slice(0, 4)) : [];
         const dopts = legal.map((id) => ({ key: 'd' + id, kind: 'discard', ids: [id], run: (c) => E.discard(c, pi, id).ok, reasons: discardReasons(st, pi, id, sit) }));
         if (dopts.length > 1) parts.push({ name: 'discard', opts: dopts, ev: evaluator(st, pi, dopts, cfg) });
         fixed = { kind: 'play', sit, plans, dopts };
@@ -2641,6 +2644,12 @@ a.mini { text-decoration: none; display: inline-flex; align-items: center; }
     app_windows: "Klikni na ikonu instalace vpravo v adresním řádku. Případně v nabídce prohlížeče najdi „Aplikace“ nebo „Uložit a sdílet“ a zvol instalaci.",
     app_iphone_t: "iPhone a iPad (Safari)",
     app_installed_toast: "Hotovo, aplikace je nainstalovaná.",
+    tr_sel_wait: "{what}: zkouším i tuhle kartu…",
+    tr_sel_eq: "{what}: skoro stejně dobré jako {best}.",
+    tr_sel_worse: "{what}: v průměru o {d} bodů horší než {best}.",
+    tr_sel_better: "{what}: vychází dokonce o {d} bodů líp než {best}.",
+    tr_sel_tip: "Tip: označ v ruce jednu kartu a trenér ji porovná s doporučenou.",
+    tr_fb_fine: "👍 V pořádku, skoro stejně dobré jako doporučení.",
     tr_beats: "V {p} rozdání vyšel líp než „{other}“.",
     tr_beats_close: "V {p} rozdání vyšel líp než „{other}“. Rozdíl je malý, obojí je v pořádku.",
     tr_more: "Proč? ▾",
@@ -3207,6 +3216,12 @@ a.mini { text-decoration: none; display: inline-flex; align-items: center; }
     app_windows: "Click the install icon on the right of the address bar. Or look for “Apps” or “Save and share” in the browser menu and choose install.",
     app_iphone_t: "iPhone and iPad (Safari)",
     app_installed_toast: "Done, the app is installed.",
+    tr_sel_wait: "{what}: testing this card too…",
+    tr_sel_eq: "{what}: about as good as {best}.",
+    tr_sel_worse: "{what}: on average {d} points worse than {best}.",
+    tr_sel_better: "{what}: actually {d} points better than {best}.",
+    tr_sel_tip: "Tip: select one card in your hand and the coach will compare it with its pick.",
+    tr_fb_fine: "👍 Fine, about as good as the suggestion.",
     tr_beats: "In {p} of deals it did better than “{other}”.",
     tr_beats_close: "In {p} of deals it did better than “{other}”. The difference is small, both are fine.",
     tr_more: "Why? ▾",
@@ -3773,6 +3788,12 @@ a.mini { text-decoration: none; display: inline-flex; align-items: center; }
     app_windows: "Clique no ícone de instalação à direita da barra de endereço. Ou procure “Apps” ou “Salvar e compartilhar” no menu do navegador e escolha instalar.",
     app_iphone_t: "iPhone e iPad (Safari)",
     app_installed_toast: "Pronto, o aplicativo está instalado.",
+    tr_sel_wait: "{what}: testando esta carta também…",
+    tr_sel_eq: "{what}: quase tão boa quanto {best}.",
+    tr_sel_worse: "{what}: em média {d} pontos pior que {best}.",
+    tr_sel_better: "{what}: na verdade {d} pontos melhor que {best}.",
+    tr_sel_tip: "Dica: marque uma carta na mão e o treinador a compara com a sugerida.",
+    tr_fb_fine: "👍 Tudo bem, quase tão boa quanto a sugestão.",
     tr_beats: "Em {p} das distribuições foi melhor que “{other}”.",
     tr_beats_close: "Em {p} das distribuições foi melhor que “{other}”. A diferença é pequena, as duas servem.",
     tr_more: "Por quê? ▾",
@@ -5349,7 +5370,7 @@ a.mini { text-decoration: none; display: inline-flex; align-items: center; }
     return { text: t('coach_discard') + (d != null ? ' ' + t('coach_discard_tip', { card: lab([d]) }) : ''), ids: d != null ? [d] : null, label: t('show_me') };
   }
   // ---------- trenér: komentovaná hra proti robotům ----------
-  const trainer = { key: null, res: null, an: null, hidden: false, more: false, feedback: null, timer: null };
+  const trainer = { key: null, res: null, an: null, hidden: false, more: false, feedback: null, timer: null, checks: new Map() };
   const trainerOn = () => !!prefs.trainer && !online() && !!st && localStarted && !tut.on;
   function trainerKey() {
     if (!st || !st.turn) return '';
@@ -5379,12 +5400,74 @@ a.mini { text-decoration: none; display: inline-flex; align-items: center; }
     return h;
   }
   // rozbor běží po kouscích v pozadí a postupně se zpřesňuje (nejdéle ~6 s)
+  const mainBusy = () => !!trainer.an && !trainer.an.done && trainer.an.elapsed < 6000;
+  const checkBusy = (c) => !!c && !!c.an && !c.an.done && c.spent < 10000;
   function trainerTick(key) {
     clearTimeout(trainer.timer);
-    if (!trainer.an || trainer.key !== key || trainerKey() !== key) return;
-    try { trainer.an.run(110); trainer.res = trainer.an.result(); } catch (e) { trainer.an = null; return; }
+    trainer.timer = null;
+    if (trainer.key !== key || trainerKey() !== key) return;
+    try {
+      if (mainBusy()) { trainer.an.run(110); trainer.res = trainer.an.result(); }
+      else {
+        const c = selCheck();
+        if (checkBusy(c)) { const t0 = Date.now(); c.an.run(110); c.spent += Date.now() - t0; c.res = c.an.result(); }
+      }
+    } catch (e) { trainer.an = null; trainer.checks.clear(); return; }
     renderCoach();
-    if (!trainer.an.done && trainer.an.elapsed < 6000) trainer.timer = setTimeout(() => trainerTick(key), 40);
+    trainerKick();
+  }
+  function trainerKick() {
+    if (trainer.timer || !trainer.key) return;
+    if (mainBusy() || checkBusy(selCheck())) { const key = trainer.key; trainer.timer = setTimeout(() => trainerTick(key), 40); }
+  }
+  // Karta, kterou si hráč sám označil: když ji trenér nemá v seznamu, spočítá ji proti doporučené
+  function selCheck() {
+    if (sel.size !== 1 || !st || st.phase !== 'play' || !myTurn()) return null;
+    const r = trainer.res;
+    if (!r || r.kind !== 'play' || !r.discard || !r.options.length || r.options[0].kind !== 'hold') return null;
+    const id = Array.from(sel)[0];
+    if (!myHand().some((c) => c.id === id) || E.discardError(st, ME, id)) return null;
+    if (r.discard.some((o) => o.ids[0] === id)) return { id, inList: true };
+    if (mainBusy()) return { id, wait: true };
+    let c = trainer.checks.get(id);
+    if (!c) {
+      const base = r.discard[0].ids[0];
+      let an = null;
+      try { an = B.analyzer(st, ME, { maxSamples: 120, discards: [base, id], discardOnly: true }); } catch (e) { an = null; }
+      if (!an) return null;
+      c = { id, base, an, res: null, spent: 0 };
+      trainer.checks.set(id, c);
+    }
+    return c;
+  }
+  function selCheckHTML() {
+    const c = selCheck();
+    if (!c) return '';
+    const r = trainer.res;
+    const best = r.discard[0];
+    if (c.id === best.ids[0]) return '';
+    const what = t('tr_discard', { card: lab([c.id]) });
+    let line, why = [];
+    const round10 = (d) => Math.round(d / 10) * 10;
+    if (c.inList) {
+      const o = r.discard.find((x) => x.ids[0] === c.id);
+      line = !o.sure || round10(o.diff) === 0 ? t('tr_sel_eq', { what, best: lab(best.ids) }) : t('tr_sel_worse', { what, d: round10(o.diff), best: lab(best.ids) });
+      why = o.reasons || [];
+    } else if (c.wait || !c.res || !c.res.discard || (c.res.n < 30 && checkBusy(c))) {
+      line = t('tr_sel_wait', { what });
+    } else {
+      const L = c.res.discard;
+      const me = L.find((x) => x.ids[0] === c.id), other = L.find((x) => x.ids[0] === c.base);
+      if (!me || !other) return '';
+      why = me.reasons || [];
+      const first = L[0] === me;
+      const d = round10(first ? other.diff : me.diff);
+      const sure = first ? other.sure : me.sure;
+      if (!sure || d === 0) line = t('tr_sel_eq', { what, best: lab(best.ids) });
+      else line = first ? t('tr_sel_better', { what, d, best: lab(best.ids) }) : t('tr_sel_worse', { what, d, best: lab(best.ids) });
+      if (trainer.more) line += ' (' + t('tr_n', { n: c.res.n }) + ')';
+    }
+    return `<div class="trsel">👆 ${esc(line)}${trainer.more && why.length ? `<br><span>${why.map((x) => esc(t(x.k, x.p || {}))).join(' ')}</span>` : ''}</div>`;
   }
   function renderTrainer(el) {
     if (trainer.hidden) {
@@ -5409,10 +5492,12 @@ a.mini { text-decoration: none; display: inline-flex; align-items: center; }
       if (trainer.key !== key) {
         trainer.key = key;
         trainer.res = null;
+        trainer.checks.clear();
         clearTimeout(trainer.timer);
         try { trainer.an = B.analyzer(st, ME, { maxSamples: 60 }); } catch (e) { trainer.an = null; }
         trainer.timer = setTimeout(() => trainerTick(key), 60);
       }
+      trainerKick();
       const r0 = trainer.res;
       const fresh = r0 && (r0.n >= 6 || (trainer.an && trainer.an.done) || r0.kind === 'draw' && r0.options.length < 2);
       if (!fresh) {
@@ -5421,7 +5506,7 @@ a.mini { text-decoration: none; display: inline-flex; align-items: center; }
         const r = trainer.res;
         if (r.kind === 'play' && r.options.length && r.options[0].kind === 'hold' && r.discard) {
           body += (r.options.length > 1 ? optionBlock(r.options) : `<div class="trbest"><b>${esc(t('tr_best'))}</b> ${esc(t('tr_hold'))}</div>${trainer.more ? `<ul class="trwhy">${(r.options[0].reasons || []).map(rsn).join('')}</ul>` : ''}`)
-            + optionBlock(r.discard, t('tr_then'));
+            + optionBlock(r.discard, t('tr_then')) + (selCheckHTML() || (trainer.more && sel.size === 0 ? `<div class="trsel">${esc(t('tr_sel_tip'))}</div>` : ''));
           ids = r.discard[0].ids;
         } else if (r.options.length) {
           body += optionBlock(r.options);
@@ -5443,8 +5528,19 @@ a.mini { text-decoration: none; display: inline-flex; align-items: center; }
     if (kind === 'draw' || kind === 'pile') { list = r.kind === 'draw' ? r.options : null; pick = list && list.find((o) => o.kind === (kind === 'draw' ? 'stock' : 'pile')); }
     if (kind === 'discard') { list = r.discard || null; pick = list && list.find((o) => o.ids[0] === id); }
     if (!list || list.length < 2) { trainer.feedback = null; return; }
+    if (!pick && kind === 'discard') {
+      const c = trainer.checks.get(id);
+      const L = c && c.res && c.res.discard;
+      const me = L && L.find((x) => x.ids[0] === id), other = L && L.find((x) => x.ids[0] === c.base);
+      if (me && other) {
+        const first = L[0] === me, d = Math.round((first ? other.diff : me.diff) / 10) * 10, sure = first ? other.sure : me.sure;
+        trainer.feedback = first || !sure || d === 0 ? t('tr_fb_fine') : t('tr_fb_worse', { what: optLabel(me), d, best: optLabel(list[0]) });
+        return;
+      }
+    }
     if (!pick) { trainer.feedback = t('tr_fb_other'); return; }
-    trainer.feedback = pick === list[0] || pick.diff <= 10 || !pick.sure ? t('tr_fb_ok') : t('tr_fb_worse', { what: optLabel(pick), d: Math.round(pick.diff / 10) * 10, best: optLabel(list[0]) });
+    if (pick === list[0]) { trainer.feedback = t('tr_fb_ok'); return; }
+    trainer.feedback = pick.diff <= 10 || !pick.sure ? t('tr_fb_fine') : t('tr_fb_worse', { what: optLabel(pick), d: Math.round(pick.diff / 10) * 10, best: optLabel(list[0]) });
   }
 
   function renderCoach() {

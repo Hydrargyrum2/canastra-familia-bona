@@ -1091,7 +1091,7 @@
     return { text: t('coach_discard') + (d != null ? ' ' + t('coach_discard_tip', { card: lab([d]) }) : ''), ids: d != null ? [d] : null, label: t('show_me') };
   }
   // ---------- trenér: komentovaná hra proti robotům ----------
-  const trainer = { key: null, res: null, an: null, hidden: false, more: false, feedback: null, timer: null };
+  const trainer = { key: null, res: null, an: null, hidden: false, more: false, feedback: null, timer: null, checks: new Map() };
   const trainerOn = () => !!prefs.trainer && !online() && !!st && localStarted && !tut.on;
   function trainerKey() {
     if (!st || !st.turn) return '';
@@ -1121,12 +1121,74 @@
     return h;
   }
   // rozbor běží po kouscích v pozadí a postupně se zpřesňuje (nejdéle ~6 s)
+  const mainBusy = () => !!trainer.an && !trainer.an.done && trainer.an.elapsed < 6000;
+  const checkBusy = (c) => !!c && !!c.an && !c.an.done && c.spent < 10000;
   function trainerTick(key) {
     clearTimeout(trainer.timer);
-    if (!trainer.an || trainer.key !== key || trainerKey() !== key) return;
-    try { trainer.an.run(110); trainer.res = trainer.an.result(); } catch (e) { trainer.an = null; return; }
+    trainer.timer = null;
+    if (trainer.key !== key || trainerKey() !== key) return;
+    try {
+      if (mainBusy()) { trainer.an.run(110); trainer.res = trainer.an.result(); }
+      else {
+        const c = selCheck();
+        if (checkBusy(c)) { const t0 = Date.now(); c.an.run(110); c.spent += Date.now() - t0; c.res = c.an.result(); }
+      }
+    } catch (e) { trainer.an = null; trainer.checks.clear(); return; }
     renderCoach();
-    if (!trainer.an.done && trainer.an.elapsed < 6000) trainer.timer = setTimeout(() => trainerTick(key), 40);
+    trainerKick();
+  }
+  function trainerKick() {
+    if (trainer.timer || !trainer.key) return;
+    if (mainBusy() || checkBusy(selCheck())) { const key = trainer.key; trainer.timer = setTimeout(() => trainerTick(key), 40); }
+  }
+  // Karta, kterou si hráč sám označil: když ji trenér nemá v seznamu, spočítá ji proti doporučené
+  function selCheck() {
+    if (sel.size !== 1 || !st || st.phase !== 'play' || !myTurn()) return null;
+    const r = trainer.res;
+    if (!r || r.kind !== 'play' || !r.discard || !r.options.length || r.options[0].kind !== 'hold') return null;
+    const id = Array.from(sel)[0];
+    if (!myHand().some((c) => c.id === id) || E.discardError(st, ME, id)) return null;
+    if (r.discard.some((o) => o.ids[0] === id)) return { id, inList: true };
+    if (mainBusy()) return { id, wait: true };
+    let c = trainer.checks.get(id);
+    if (!c) {
+      const base = r.discard[0].ids[0];
+      let an = null;
+      try { an = B.analyzer(st, ME, { maxSamples: 120, discards: [base, id], discardOnly: true }); } catch (e) { an = null; }
+      if (!an) return null;
+      c = { id, base, an, res: null, spent: 0 };
+      trainer.checks.set(id, c);
+    }
+    return c;
+  }
+  function selCheckHTML() {
+    const c = selCheck();
+    if (!c) return '';
+    const r = trainer.res;
+    const best = r.discard[0];
+    if (c.id === best.ids[0]) return '';
+    const what = t('tr_discard', { card: lab([c.id]) });
+    let line, why = [];
+    const round10 = (d) => Math.round(d / 10) * 10;
+    if (c.inList) {
+      const o = r.discard.find((x) => x.ids[0] === c.id);
+      line = !o.sure || round10(o.diff) === 0 ? t('tr_sel_eq', { what, best: lab(best.ids) }) : t('tr_sel_worse', { what, d: round10(o.diff), best: lab(best.ids) });
+      why = o.reasons || [];
+    } else if (c.wait || !c.res || !c.res.discard || (c.res.n < 30 && checkBusy(c))) {
+      line = t('tr_sel_wait', { what });
+    } else {
+      const L = c.res.discard;
+      const me = L.find((x) => x.ids[0] === c.id), other = L.find((x) => x.ids[0] === c.base);
+      if (!me || !other) return '';
+      why = me.reasons || [];
+      const first = L[0] === me;
+      const d = round10(first ? other.diff : me.diff);
+      const sure = first ? other.sure : me.sure;
+      if (!sure || d === 0) line = t('tr_sel_eq', { what, best: lab(best.ids) });
+      else line = first ? t('tr_sel_better', { what, d, best: lab(best.ids) }) : t('tr_sel_worse', { what, d, best: lab(best.ids) });
+      if (trainer.more) line += ' (' + t('tr_n', { n: c.res.n }) + ')';
+    }
+    return `<div class="trsel">👆 ${esc(line)}${trainer.more && why.length ? `<br><span>${why.map((x) => esc(t(x.k, x.p || {}))).join(' ')}</span>` : ''}</div>`;
   }
   function renderTrainer(el) {
     if (trainer.hidden) {
@@ -1151,10 +1213,12 @@
       if (trainer.key !== key) {
         trainer.key = key;
         trainer.res = null;
+        trainer.checks.clear();
         clearTimeout(trainer.timer);
         try { trainer.an = B.analyzer(st, ME, { maxSamples: 60 }); } catch (e) { trainer.an = null; }
         trainer.timer = setTimeout(() => trainerTick(key), 60);
       }
+      trainerKick();
       const r0 = trainer.res;
       const fresh = r0 && (r0.n >= 6 || (trainer.an && trainer.an.done) || r0.kind === 'draw' && r0.options.length < 2);
       if (!fresh) {
@@ -1163,7 +1227,7 @@
         const r = trainer.res;
         if (r.kind === 'play' && r.options.length && r.options[0].kind === 'hold' && r.discard) {
           body += (r.options.length > 1 ? optionBlock(r.options) : `<div class="trbest"><b>${esc(t('tr_best'))}</b> ${esc(t('tr_hold'))}</div>${trainer.more ? `<ul class="trwhy">${(r.options[0].reasons || []).map(rsn).join('')}</ul>` : ''}`)
-            + optionBlock(r.discard, t('tr_then'));
+            + optionBlock(r.discard, t('tr_then')) + (selCheckHTML() || (trainer.more && sel.size === 0 ? `<div class="trsel">${esc(t('tr_sel_tip'))}</div>` : ''));
           ids = r.discard[0].ids;
         } else if (r.options.length) {
           body += optionBlock(r.options);
@@ -1185,8 +1249,19 @@
     if (kind === 'draw' || kind === 'pile') { list = r.kind === 'draw' ? r.options : null; pick = list && list.find((o) => o.kind === (kind === 'draw' ? 'stock' : 'pile')); }
     if (kind === 'discard') { list = r.discard || null; pick = list && list.find((o) => o.ids[0] === id); }
     if (!list || list.length < 2) { trainer.feedback = null; return; }
+    if (!pick && kind === 'discard') {
+      const c = trainer.checks.get(id);
+      const L = c && c.res && c.res.discard;
+      const me = L && L.find((x) => x.ids[0] === id), other = L && L.find((x) => x.ids[0] === c.base);
+      if (me && other) {
+        const first = L[0] === me, d = Math.round((first ? other.diff : me.diff) / 10) * 10, sure = first ? other.sure : me.sure;
+        trainer.feedback = first || !sure || d === 0 ? t('tr_fb_fine') : t('tr_fb_worse', { what: optLabel(me), d, best: optLabel(list[0]) });
+        return;
+      }
+    }
     if (!pick) { trainer.feedback = t('tr_fb_other'); return; }
-    trainer.feedback = pick === list[0] || pick.diff <= 10 || !pick.sure ? t('tr_fb_ok') : t('tr_fb_worse', { what: optLabel(pick), d: Math.round(pick.diff / 10) * 10, best: optLabel(list[0]) });
+    if (pick === list[0]) { trainer.feedback = t('tr_fb_ok'); return; }
+    trainer.feedback = pick.diff <= 10 || !pick.sure ? t('tr_fb_fine') : t('tr_fb_worse', { what: optLabel(pick), d: Math.round(pick.diff / 10) * 10, best: optLabel(list[0]) });
   }
 
   function renderCoach() {

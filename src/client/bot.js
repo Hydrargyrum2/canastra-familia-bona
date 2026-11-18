@@ -841,9 +841,10 @@
           plans.push({ key: 'plan' + plans.length, kind: acts.length ? 'lay' : 'hold', acts, ids: [].concat(...acts.map((a) => a.ids)), penalty: acts.trap ? EXPERT.trap : 0,
             run: (c) => applyPlan(c, pi, acts) && finishTurn(c, pi), reasons: planReasons(st, pi, acts, sit) });
         }
-        if (plans.length > 1) parts.push({ name: 'options', opts: plans, ev: evaluator(st, pi, plans, cfg) });
+        if (plans.length > 1 && !cfg.discardOnly) parts.push({ name: 'options', opts: plans, ev: evaluator(st, pi, plans, cfg) });
         const holdPossible = plans.some((p) => p.kind === 'hold');
-        const legal = holdPossible ? discardOrder(st, pi).filter((id) => !E.discardError(st, pi, id)).slice(0, 4) : [];
+        // cfg.discards: vlastní seznam karet k porovnání (trenér: karta, kterou si hráč označil)
+        const legal = holdPossible ? (cfg.discards || discardOrder(st, pi).filter((id) => !E.discardError(st, pi, id)).slice(0, 4)) : [];
         const dopts = legal.map((id) => ({ key: 'd' + id, kind: 'discard', ids: [id], run: (c) => E.discard(c, pi, id).ok, reasons: discardReasons(st, pi, id, sit) }));
         if (dopts.length > 1) parts.push({ name: 'discard', opts: dopts, ev: evaluator(st, pi, dopts, cfg) });
         fixed = { kind: 'play', sit, plans, dopts };
