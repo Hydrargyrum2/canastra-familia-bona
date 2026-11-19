@@ -332,6 +332,20 @@ table.res thead th { color: var(--muted); font-size: 12px; text-transform: upper
 table.res tr.sum td { font-weight: 700; color: #fff; }
 table.res tr.tot td { font-family: var(--font-display); font-size: 20px; font-weight: 700; border-bottom: 0; }
 table.res tr.tot td:nth-child(2) { color: var(--brass); }
+.endhands { margin: 6px 0 2px; text-align: left; }
+.endhands h4 { margin: 8px 0 4px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); font-weight: 600; }
+.endhands .eh { padding: 5px 0 7px; border-bottom: 1px solid var(--line); }
+.endhands .ehh { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-size: 14px; margin-bottom: 4px; }
+.endhands .ehp { font-variant-numeric: tabular-nums; font-weight: 600; white-space: nowrap; }
+.endhands .ehp.good { color: var(--brass); }
+.endhands .ehp.bad { color: #f0a3a0; }
+.endhands .ehc { --cw: 30px; display: flex; flex-wrap: wrap; gap: 4px 0; padding-left: 12px; }
+.endhands .ehc .card { margin-left: -12px; }
+.card.hot { box-shadow: 0 0 0 2px #e0484b, 0 3px 8px rgba(0,0,0,0.28); }
+.seat .openhand { --cw: 26px; display: flex; justify-content: center; flex-wrap: wrap; padding-left: 10px; max-width: 100%; }
+.seat .openhand .card { margin-left: -10px; }
+.seat.small .openhand { --cw: 20px; padding-left: 8px; }
+.seat.small .openhand .card { margin-left: -8px; }
 .pilegrid { --cw: 38px; display: flex; flex-wrap: wrap; gap: 6px; }
 .logl { margin: 0; padding: 0; list-style: none; font-size: 14px; }
 .logl li { padding: 6px 0; border-bottom: 1px solid var(--line); color: #d7e6e1; }

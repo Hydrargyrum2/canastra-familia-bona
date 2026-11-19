@@ -87,6 +87,9 @@ async function main() {
   }
   const end = ta.last('state').s;
   check(end.game.phase === 'roundOver', 'první kolo dohráno');
+  const lrh = end.game.lastRound && end.game.lastRound.hands;
+  check(Array.isArray(lrh) && lrh.length === end.game.players.length && lrh.every((h) => Array.isArray(h) && h.every((c) => c.r)), 'po kole jsou vidět karty, které hráčům zůstaly v ruce');
+  check(lrh && lrh.some((h) => h.length > 0), 'aspoň někomu zůstaly karty');
   await sleep(8000); // déle než limit na tah (6 s)
   const later = ta.last('state').s;
   check(later.game.phase === 'roundOver' && later.game.round === end.game.round, 'další kolo se samo nespustilo ani po čase');

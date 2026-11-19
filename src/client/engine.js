@@ -696,7 +696,9 @@
     });
     // body za sejmutí se připsaly hned na začátku kola
     res.forEach((r, i) => { st.teams[i].score += r.total - r.cutPts; });
-    st.lastRound = { closer, teams: res };
+    // karty, které hráčům zůstaly v ruce (po kole se ukážou všem)
+    const hands = st.players.map((p) => p.hand.map((c) => ({ id: c.id, r: c.r, s: c.s })));
+    st.lastRound = { closer, teams: res, hands };
     st.phase = 'roundOver';
     const scores = st.teams.map((t) => t.score);
     if (Math.max(scores[0], scores[1]) >= RULES.target) {

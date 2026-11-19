@@ -336,10 +336,12 @@
   function oppSeatHTML() {
     const opps = st.players.map((p, i) => i).filter((i) => st.players[i].team !== US());
     const small = opps.length > 1;
+    const lr = (st.phase === 'roundOver' || st.phase === 'gameOver') && st.lastRound && Array.isArray(st.lastRound.hands) ? st.lastRound : null;
     return opps.map((i) => {
       const p = st.players[i];
+      const shown = lr && lr.hands[i] && lr.hands[i].length ? `<span class="openhand" aria-label="${esc(t('eh_title'))}">${endHandSort(lr.hands[i]).map((c) => cardFace(c)).join('')}</span>` : null;
       return `<div class="seat ${small ? 'small' : ''} ${playing(i) ? 'turn' : ''}" data-seat="${i}">
-        ${arcHTML(handLen(p), small ? 9 : 13)}
+        ${shown || arcHTML(handLen(p), small ? 9 : 13)}
         <div class="who"><span class="nm">${esc(p.name)}</span><span class="tag">${esc(seatTag(i, false))}</span><span class="cnt">${handLen(p)}</span></div>
       </div>`;
     }).join('');
@@ -574,7 +576,35 @@
           ${row(t('row_total'), fmt(st.teams[u].score), fmt(st.teams[th].score), 'tot')}
         </tbody>
       </table>
+      ${endHandsHTML()}
       <div class="stackbtns">${buttons}</div>`;
+  }
+  // karty, které hráčům zůstaly v ruce na konci kola (soupeři první)
+  function endHandSort(cards) {
+    const so = { S: 0, H: 1, C: 2, D: 3 };
+    const key = (c) => (E.isBlack3(c) ? -1 : E.isWild(c) ? 900 + (c.r === 'JK' ? 1 : 0) : so[c.s] * 20 + E.pos(c));
+    return cards.slice().sort((a, b) => key(a) - key(b) || a.id - b.id);
+  }
+  function endHandsHTML() {
+    const lr = st.lastRound;
+    if (!lr || !Array.isArray(lr.hands)) return '';
+    const u = US();
+    const order = st.players.map((p, i) => i).filter((i) => lr.hands[i] && lr.hands[i].length)
+      .sort((a, b) => (st.players[a].team === u) - (st.players[b].team === u) || (a === ME) - (b === ME) || a - b);
+    if (!order.length) return '';
+    const rows = order.map((i) => {
+      const cards = endHandSort(lr.hands[i]);
+      const counted = lr.closer != null && st.players[i].team !== lr.closer;
+      const pts = counted ? cards.reduce((s, c) => s + E.captureValue(c), 0) : 0;
+      let lab = '';
+      if (counted) {
+        const k = lr.closer === u ? (mode === '2v2' ? 'eh_pts_us' : 'eh_pts_me') : (mode === '2v2' ? 'eh_pts_opps' : 'eh_pts_opp');
+        lab = `<span class="ehp ${lr.closer === u ? 'good' : 'bad'}">${esc(t(k, { n: fmt(pts) }))}</span>`;
+      }
+      const faces = cards.map((c) => cardFace(c).replace('<span class="card', `<span class="card${counted && E.isBlack3(c) ? ' hot' : ''}`)).join('');
+      return `<div class="eh"><div class="ehh"><b>${esc(nameOf(i))}</b>${lab}</div><div class="ehc">${faces}</div></div>`;
+    }).join('');
+    return `<div class="endhands"><h4>${esc(t('eh_title'))}</h4>${rows}</div>`;
   }
 
   // ---------- nepovedené první vyložení ----------

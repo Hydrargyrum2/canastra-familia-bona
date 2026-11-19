@@ -365,6 +365,20 @@ table.res thead th { color: var(--muted); font-size: 12px; text-transform: upper
 table.res tr.sum td { font-weight: 700; color: #fff; }
 table.res tr.tot td { font-family: var(--font-display); font-size: 20px; font-weight: 700; border-bottom: 0; }
 table.res tr.tot td:nth-child(2) { color: var(--brass); }
+.endhands { margin: 6px 0 2px; text-align: left; }
+.endhands h4 { margin: 8px 0 4px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); font-weight: 600; }
+.endhands .eh { padding: 5px 0 7px; border-bottom: 1px solid var(--line); }
+.endhands .ehh { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-size: 14px; margin-bottom: 4px; }
+.endhands .ehp { font-variant-numeric: tabular-nums; font-weight: 600; white-space: nowrap; }
+.endhands .ehp.good { color: var(--brass); }
+.endhands .ehp.bad { color: #f0a3a0; }
+.endhands .ehc { --cw: 30px; display: flex; flex-wrap: wrap; gap: 4px 0; padding-left: 12px; }
+.endhands .ehc .card { margin-left: -12px; }
+.card.hot { box-shadow: 0 0 0 2px #e0484b, 0 3px 8px rgba(0,0,0,0.28); }
+.seat .openhand { --cw: 26px; display: flex; justify-content: center; flex-wrap: wrap; padding-left: 10px; max-width: 100%; }
+.seat .openhand .card { margin-left: -10px; }
+.seat.small .openhand { --cw: 20px; padding-left: 8px; }
+.seat.small .openhand .card { margin-left: -8px; }
 .pilegrid { --cw: 38px; display: flex; flex-wrap: wrap; gap: 6px; }
 .logl { margin: 0; padding: 0; list-style: none; font-size: 14px; }
 .logl li { padding: 6px 0; border-bottom: 1px solid var(--line); color: #d7e6e1; }
@@ -1472,7 +1486,9 @@ a.mini { text-decoration: none; display: inline-flex; align-items: center; }
     });
     // body za sejmutí se připsaly hned na začátku kola
     res.forEach((r, i) => { st.teams[i].score += r.total - r.cutPts; });
-    st.lastRound = { closer, teams: res };
+    // karty, které hráčům zůstaly v ruce (po kole se ukážou všem)
+    const hands = st.players.map((p) => p.hand.map((c) => ({ id: c.id, r: c.r, s: c.s })));
+    st.lastRound = { closer, teams: res, hands };
     st.phase = 'roundOver';
     const scores = st.teams.map((t) => t.score);
     if (Math.max(scores[0], scores[1]) >= RULES.target) {
@@ -2644,6 +2660,11 @@ a.mini { text-decoration: none; display: inline-flex; align-items: center; }
     app_windows: "Klikni na ikonu instalace vpravo v adresním řádku. Případně v nabídce prohlížeče najdi „Aplikace“ nebo „Uložit a sdílet“ a zvol instalaci.",
     app_iphone_t: "iPhone a iPad (Safari)",
     app_installed_toast: "Hotovo, aplikace je nainstalovaná.",
+    eh_title: "Karty v ruce na konci kola",
+    eh_pts_me: "+{n} pro tebe",
+    eh_pts_us: "+{n} pro vás",
+    eh_pts_opp: "+{n} pro soupeře",
+    eh_pts_opps: "+{n} pro soupeře",
     tr_sel_wait: "{what}: zkouším i tuhle kartu…",
     tr_sel_eq: "{what}: skoro stejně dobré jako {best}.",
     tr_sel_worse: "{what}: v průměru o {d} bodů horší než {best}.",
@@ -3216,6 +3237,11 @@ a.mini { text-decoration: none; display: inline-flex; align-items: center; }
     app_windows: "Click the install icon on the right of the address bar. Or look for “Apps” or “Save and share” in the browser menu and choose install.",
     app_iphone_t: "iPhone and iPad (Safari)",
     app_installed_toast: "Done, the app is installed.",
+    eh_title: "Cards left in hand",
+    eh_pts_me: "+{n} for you",
+    eh_pts_us: "+{n} for your team",
+    eh_pts_opp: "+{n} for the opponent",
+    eh_pts_opps: "+{n} for the opponents",
     tr_sel_wait: "{what}: testing this card too…",
     tr_sel_eq: "{what}: about as good as {best}.",
     tr_sel_worse: "{what}: on average {d} points worse than {best}.",
@@ -3788,6 +3814,11 @@ a.mini { text-decoration: none; display: inline-flex; align-items: center; }
     app_windows: "Clique no ícone de instalação à direita da barra de endereço. Ou procure “Apps” ou “Salvar e compartilhar” no menu do navegador e escolha instalar.",
     app_iphone_t: "iPhone e iPad (Safari)",
     app_installed_toast: "Pronto, o aplicativo está instalado.",
+    eh_title: "Cartas na mão no fim da rodada",
+    eh_pts_me: "+{n} para você",
+    eh_pts_us: "+{n} para vocês",
+    eh_pts_opp: "+{n} para o adversário",
+    eh_pts_opps: "+{n} para os adversários",
     tr_sel_wait: "{what}: testando esta carta também…",
     tr_sel_eq: "{what}: quase tão boa quanto {best}.",
     tr_sel_worse: "{what}: em média {d} pontos pior que {best}.",
@@ -4615,10 +4646,12 @@ a.mini { text-decoration: none; display: inline-flex; align-items: center; }
   function oppSeatHTML() {
     const opps = st.players.map((p, i) => i).filter((i) => st.players[i].team !== US());
     const small = opps.length > 1;
+    const lr = (st.phase === 'roundOver' || st.phase === 'gameOver') && st.lastRound && Array.isArray(st.lastRound.hands) ? st.lastRound : null;
     return opps.map((i) => {
       const p = st.players[i];
+      const shown = lr && lr.hands[i] && lr.hands[i].length ? `<span class="openhand" aria-label="${esc(t('eh_title'))}">${endHandSort(lr.hands[i]).map((c) => cardFace(c)).join('')}</span>` : null;
       return `<div class="seat ${small ? 'small' : ''} ${playing(i) ? 'turn' : ''}" data-seat="${i}">
-        ${arcHTML(handLen(p), small ? 9 : 13)}
+        ${shown || arcHTML(handLen(p), small ? 9 : 13)}
         <div class="who"><span class="nm">${esc(p.name)}</span><span class="tag">${esc(seatTag(i, false))}</span><span class="cnt">${handLen(p)}</span></div>
       </div>`;
     }).join('');
@@ -4853,7 +4886,35 @@ a.mini { text-decoration: none; display: inline-flex; align-items: center; }
           ${row(t('row_total'), fmt(st.teams[u].score), fmt(st.teams[th].score), 'tot')}
         </tbody>
       </table>
+      ${endHandsHTML()}
       <div class="stackbtns">${buttons}</div>`;
+  }
+  // karty, které hráčům zůstaly v ruce na konci kola (soupeři první)
+  function endHandSort(cards) {
+    const so = { S: 0, H: 1, C: 2, D: 3 };
+    const key = (c) => (E.isBlack3(c) ? -1 : E.isWild(c) ? 900 + (c.r === 'JK' ? 1 : 0) : so[c.s] * 20 + E.pos(c));
+    return cards.slice().sort((a, b) => key(a) - key(b) || a.id - b.id);
+  }
+  function endHandsHTML() {
+    const lr = st.lastRound;
+    if (!lr || !Array.isArray(lr.hands)) return '';
+    const u = US();
+    const order = st.players.map((p, i) => i).filter((i) => lr.hands[i] && lr.hands[i].length)
+      .sort((a, b) => (st.players[a].team === u) - (st.players[b].team === u) || (a === ME) - (b === ME) || a - b);
+    if (!order.length) return '';
+    const rows = order.map((i) => {
+      const cards = endHandSort(lr.hands[i]);
+      const counted = lr.closer != null && st.players[i].team !== lr.closer;
+      const pts = counted ? cards.reduce((s, c) => s + E.captureValue(c), 0) : 0;
+      let lab = '';
+      if (counted) {
+        const k = lr.closer === u ? (mode === '2v2' ? 'eh_pts_us' : 'eh_pts_me') : (mode === '2v2' ? 'eh_pts_opps' : 'eh_pts_opp');
+        lab = `<span class="ehp ${lr.closer === u ? 'good' : 'bad'}">${esc(t(k, { n: fmt(pts) }))}</span>`;
+      }
+      const faces = cards.map((c) => cardFace(c).replace('<span class="card', `<span class="card${counted && E.isBlack3(c) ? ' hot' : ''}`)).join('');
+      return `<div class="eh"><div class="ehh"><b>${esc(nameOf(i))}</b>${lab}</div><div class="ehc">${faces}</div></div>`;
+    }).join('');
+    return `<div class="endhands"><h4>${esc(t('eh_title'))}</h4>${rows}</div>`;
   }
 
   // ---------- nepovedené první vyložení ----------
