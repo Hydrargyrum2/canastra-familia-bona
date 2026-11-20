@@ -1776,7 +1776,7 @@
     el.className = 'fx-emote';
     el.style.left = from.x + 'px';
     el.style.top = from.y + 'px';
-    el.innerHTML = `<span class="e">${x.e}</span><span class="tx">${esc(m.name)}: ${esc(t('emo_' + m.id))}</span>`;
+    el.innerHTML = `<span class="e">${x.e}</span>`;
     fx.appendChild(el);
     setTimeout(() => el.remove(), 2800);
   }

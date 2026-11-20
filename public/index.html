@@ -519,7 +519,6 @@ table.res tr.tot td:nth-child(2) { color: var(--brass); }
   animation: emo-pop 2.8s cubic-bezier(.2,1.4,.4,1) forwards;
 }
 .fx-emote .e { font-size: 72px; line-height: 1; filter: drop-shadow(0 8px 14px rgba(0,0,0,0.5)); animation: emo-wiggle 0.5s ease-in-out 3; }
-.fx-emote .tx { font-weight: 700; font-size: 15px; background: rgba(4,22,19,0.88); border: 1px solid var(--brass); padding: 4px 10px; border-radius: 12px; white-space: nowrap; }
 @keyframes emo-pop {
   0% { transform: translate(-50%, -30%) scale(0.2); opacity: 0; }
   15% { transform: translate(-50%, -50%) scale(1.1); opacity: 1; }
@@ -6086,7 +6085,7 @@ a.mini { text-decoration: none; display: inline-flex; align-items: center; }
     el.className = 'fx-emote';
     el.style.left = from.x + 'px';
     el.style.top = from.y + 'px';
-    el.innerHTML = `<span class="e">${x.e}</span><span class="tx">${esc(m.name)}: ${esc(t('emo_' + m.id))}</span>`;
+    el.innerHTML = `<span class="e">${x.e}</span>`;
     fx.appendChild(el);
     setTimeout(() => el.remove(), 2800);
   }
