@@ -924,7 +924,7 @@
     const self = p.id === net.user.id;
     const status = self ? 'online' : statusOf(p.id);
     const inv = net.invited[p.id];
-    const btn = withInvite && !self && status !== 'offline'
+    const btn = withInvite && !self
       ? `<button class="mini" data-act="invite" data-v="${p.id}" ${inv ? 'disabled' : ''}>${esc(inv ? t('invited') : t('invite'))}</button>` : '';
     return `<li class="prow"><button class="pbtn" data-act="profile" data-v="${p.id}">${avatarHTML(p, 34)}${dot(status)}
       <span class="pname">${esc(p.name)}${self ? ` <em>(${esc(t('you_short'))})</em>` : ''}</span>
@@ -962,8 +962,7 @@
       `<span class="rowbtns"><button class="mini" data-act="facc" data-v="${p.id}">${esc(t('accept'))}</button><button class="mini ghost" data-act="fdec" data-v="${p.id}">${esc(t('decline'))}</button></span>`)).join('')}</ul>` : '';
     const list = f.friends.slice().sort(byStatus);
     const fr = list.length
-      ? `<ul class="plist">${list.map((p) => row(p, statusOf(p.id) !== 'offline'
-        ? `<button class="mini" data-act="invite" data-v="${p.id}" ${net.invited[p.id] ? 'disabled' : ''}>${esc(net.invited[p.id] ? t('invited') : t('invite'))}</button>` : '')).join('')}</ul>`
+      ? `<ul class="plist">${list.map((p) => row(p, `<button class="mini" data-act="invite" data-v="${p.id}" ${net.invited[p.id] ? 'disabled' : ''}>${esc(net.invited[p.id] ? t('invited') : t('invite'))}</button>`)).join('')}</ul>`
       : `<p class="empty">${esc(t('no_friends'))}</p>`;
     const out = f.outgoing.length ? `<h3>${esc(t('friend_sent'))}</h3><ul class="plist">${f.outgoing.map((p) => row(p,
       `<button class="mini ghost" data-act="fdel" data-v="${p.id}">${esc(t('cancel'))}</button>`)).join('')}</ul>` : '';
@@ -1030,7 +1029,7 @@
         in: `<button class="btn primary" data-act="facc" data-v="${u.id}">${esc(t('accept_request'))}</button>`,
         friends: `<button class="btn" data-act="fdel" data-v="${u.id}" data-confirm="1">✓ ${esc(t('is_friend'))} · ${esc(t('remove'))}</button>`,
       }[pr.friend] || '';
-      const inv = status !== 'offline' ? `<button class="btn" data-act="invite" data-v="${u.id}" ${net.invited[u.id] ? 'disabled' : ''}>🎴 ${esc(net.invited[u.id] ? t('invited') : t('invite_game'))}</button>` : '';
+      const inv = u.id ? `<button class="btn" data-act="invite" data-v="${u.id}" ${net.invited[u.id] ? 'disabled' : ''}>🎴 ${esc(net.invited[u.id] ? t('invited') : t('invite_game'))}</button>` : '';
       const h = pr.h2h;
       actions = `<h3>${esc(t('h2h_title'))}</h3>
         ${h.games ? `<div class="h2h"><span>${esc(t('you_name'))}</span><b>${h.wins} : ${h.losses}</b><span>${esc(u.name)}</span></div><p class="seghint">${esc(t('h2h_games', { n: h.games }))}</p>` : `<p class="empty">${esc(t('h2h_none'))}</p>`}
@@ -1621,12 +1620,12 @@
     }
   }
 
-  function toast(msg, kind) {
+  function toast(msg, kind, ms) {
     const el = $('#toast');
     el.textContent = msg;
     el.className = 'show ' + (kind || '');
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => { el.className = ''; }, 3400);
+    toastTimer = setTimeout(() => { el.className = ''; }, ms || 3400);
   }
 
   // ---------- chat, emoty, pozvánky ----------
@@ -1933,7 +1932,7 @@
       else if (m.t === 'invite') {
         if (!net.invites.some((i) => i.id === m.inv.id) && !(net.code === m.inv.table)) net.invites.push(m.inv);
         render();
-      } else if (m.t === 'invite_sent') toast(m.online ? t('invite_sent') : t('invite_queued'), 'info');
+      } else if (m.t === 'invite_sent') toast(m.online ? t('invite_sent') : m.pushed ? t('invite_pushed') : t('invite_queued'), 'info', m.online ? undefined : 5000);
       else if (m.t === 'invite_answer') toast(t(m.accept ? 'invite_accepted' : 'invite_declined', { name: m.by.name }), 'info');
     };
     ws.onclose = () => {

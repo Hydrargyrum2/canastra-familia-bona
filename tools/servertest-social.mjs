@@ -104,6 +104,15 @@ async function main() {
   l1.send({ t: 'invite', to: P2.id, table: 'ABCDEF', mode: '1v1' });
   check(!!(await l2.wait((m) => m.t === 'invite')), 'po zrušení ztlumení pozvánka dorazí');
 
+  console.log('Pozvánka offline hráči');
+  l1.send({ t: 'invite', to: P3.id, table: 'QWERTY', mode: '1v1' });
+  const sent = await l1.wait((m) => m.t === 'invite_sent' && m.to === P3.id);
+  check(sent.online === false && sent.pushed === false, 'offline hráč bez upozornění: pozvánka uložená, odesílatel to ví');
+  const l3 = connect('/api/lobby/ws', P3.token); await l3.opened;
+  const got = await l3.wait((m) => m.t === 'invite');
+  check(got.inv.from.id === P1.id && got.inv.table === 'QWERTY', 'po přihlášení offline hráč pozvánku dostane');
+  l3.ws.close();
+
   console.log('Obrázky');
   r = await post('/api/profile/avatar', { preset: 'p:parrot' }, P1.token);
   check(r.data.user.avatar === 'p:parrot', 'připravený obrázek');

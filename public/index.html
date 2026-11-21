@@ -2635,7 +2635,6 @@ a.mini { text-decoration: none; display: inline-flex; align-items: center; }
     accept: "Přijmout",
     decline: "Odmítnout",
     invite_sent: "Pozvánka odeslána.",
-    invite_queued: "Hráč není online, pozvánku uvidí po přihlášení.",
     invite_accepted: "{name} přijal pozvánku.",
     invite_declined: "{name} pozvánku odmítl.",
     chat_title: "Chat u stolu",
@@ -2677,6 +2676,8 @@ a.mini { text-decoration: none; display: inline-flex; align-items: center; }
     app_windows: "Klikni na ikonu instalace vpravo v adresním řádku. Případně v nabídce prohlížeče najdi „Aplikace“ nebo „Uložit a sdílet“ a zvol instalaci.",
     app_iphone_t: "iPhone a iPad (Safari)",
     app_installed_toast: "Hotovo, aplikace je nainstalovaná.",
+    invite_pushed: "Hráč není online – poslali jsme mu upozornění. Pozvánku uvidí i po přihlášení, počkej u stolu.",
+    invite_queued: "Hráč není online a nemá zapnutá upozornění. Pozvánku uvidí po přihlášení.",
     pw_title: "Kam dát {card}?",
     pw_lead: "Vrchní karta z hromádky pasuje k víc tvým vykládkám. Vyber, ke které ji přiložíš. (Příště můžeš rovnou ťuknout na vykládku.)",
     pw_canasta: "Sem – vznikne canasta",
@@ -3217,7 +3218,6 @@ a.mini { text-decoration: none; display: inline-flex; align-items: center; }
     accept: "Accept",
     decline: "Decline",
     invite_sent: "Invite sent.",
-    invite_queued: "The player is offline and will see the invite after signing in.",
     invite_accepted: "{name} accepted your invite.",
     invite_declined: "{name} declined your invite.",
     chat_title: "Table chat",
@@ -3259,6 +3259,8 @@ a.mini { text-decoration: none; display: inline-flex; align-items: center; }
     app_windows: "Click the install icon on the right of the address bar. Or look for “Apps” or “Save and share” in the browser menu and choose install.",
     app_iphone_t: "iPhone and iPad (Safari)",
     app_installed_toast: "Done, the app is installed.",
+    invite_pushed: "The player is offline – we sent them a notification. They'll also see the invite when they sign in, so wait at the table.",
+    invite_queued: "The player is offline and has notifications off. They'll see the invite when they sign in.",
     pw_title: "Where should {card} go?",
     pw_lead: "The top card of the pile fits more than one of your melds. Choose which one to add it to. (Next time you can tap the meld directly.)",
     pw_canasta: "Here – makes a canasta",
@@ -3799,7 +3801,6 @@ a.mini { text-decoration: none; display: inline-flex; align-items: center; }
     accept: "Aceitar",
     decline: "Recusar",
     invite_sent: "Convite enviado.",
-    invite_queued: "O jogador está offline e verá o convite ao entrar.",
     invite_accepted: "{name} aceitou o convite.",
     invite_declined: "{name} recusou o convite.",
     chat_title: "Chat da mesa",
@@ -3841,6 +3842,8 @@ a.mini { text-decoration: none; display: inline-flex; align-items: center; }
     app_windows: "Clique no ícone de instalação à direita da barra de endereço. Ou procure “Apps” ou “Salvar e compartilhar” no menu do navegador e escolha instalar.",
     app_iphone_t: "iPhone e iPad (Safari)",
     app_installed_toast: "Pronto, o aplicativo está instalado.",
+    invite_pushed: "O jogador está offline – enviamos uma notificação. Ele também verá o convite ao entrar; espere na mesa.",
+    invite_queued: "O jogador está offline e não ativou as notificações. Verá o convite ao entrar.",
     pw_title: "Onde colocar {card}?",
     pw_lead: "A carta de cima do monte serve em mais de um dos seus jogos. Escolha em qual colocar. (Da próxima vez pode tocar direto no jogo.)",
     pw_canasta: "Aqui – forma canastra",
@@ -5266,7 +5269,7 @@ a.mini { text-decoration: none; display: inline-flex; align-items: center; }
     const self = p.id === net.user.id;
     const status = self ? 'online' : statusOf(p.id);
     const inv = net.invited[p.id];
-    const btn = withInvite && !self && status !== 'offline'
+    const btn = withInvite && !self
       ? `<button class="mini" data-act="invite" data-v="${p.id}" ${inv ? 'disabled' : ''}>${esc(inv ? t('invited') : t('invite'))}</button>` : '';
     return `<li class="prow"><button class="pbtn" data-act="profile" data-v="${p.id}">${avatarHTML(p, 34)}${dot(status)}
       <span class="pname">${esc(p.name)}${self ? ` <em>(${esc(t('you_short'))})</em>` : ''}</span>
@@ -5304,8 +5307,7 @@ a.mini { text-decoration: none; display: inline-flex; align-items: center; }
       `<span class="rowbtns"><button class="mini" data-act="facc" data-v="${p.id}">${esc(t('accept'))}</button><button class="mini ghost" data-act="fdec" data-v="${p.id}">${esc(t('decline'))}</button></span>`)).join('')}</ul>` : '';
     const list = f.friends.slice().sort(byStatus);
     const fr = list.length
-      ? `<ul class="plist">${list.map((p) => row(p, statusOf(p.id) !== 'offline'
-        ? `<button class="mini" data-act="invite" data-v="${p.id}" ${net.invited[p.id] ? 'disabled' : ''}>${esc(net.invited[p.id] ? t('invited') : t('invite'))}</button>` : '')).join('')}</ul>`
+      ? `<ul class="plist">${list.map((p) => row(p, `<button class="mini" data-act="invite" data-v="${p.id}" ${net.invited[p.id] ? 'disabled' : ''}>${esc(net.invited[p.id] ? t('invited') : t('invite'))}</button>`)).join('')}</ul>`
       : `<p class="empty">${esc(t('no_friends'))}</p>`;
     const out = f.outgoing.length ? `<h3>${esc(t('friend_sent'))}</h3><ul class="plist">${f.outgoing.map((p) => row(p,
       `<button class="mini ghost" data-act="fdel" data-v="${p.id}">${esc(t('cancel'))}</button>`)).join('')}</ul>` : '';
@@ -5372,7 +5374,7 @@ a.mini { text-decoration: none; display: inline-flex; align-items: center; }
         in: `<button class="btn primary" data-act="facc" data-v="${u.id}">${esc(t('accept_request'))}</button>`,
         friends: `<button class="btn" data-act="fdel" data-v="${u.id}" data-confirm="1">✓ ${esc(t('is_friend'))} · ${esc(t('remove'))}</button>`,
       }[pr.friend] || '';
-      const inv = status !== 'offline' ? `<button class="btn" data-act="invite" data-v="${u.id}" ${net.invited[u.id] ? 'disabled' : ''}>🎴 ${esc(net.invited[u.id] ? t('invited') : t('invite_game'))}</button>` : '';
+      const inv = u.id ? `<button class="btn" data-act="invite" data-v="${u.id}" ${net.invited[u.id] ? 'disabled' : ''}>🎴 ${esc(net.invited[u.id] ? t('invited') : t('invite_game'))}</button>` : '';
       const h = pr.h2h;
       actions = `<h3>${esc(t('h2h_title'))}</h3>
         ${h.games ? `<div class="h2h"><span>${esc(t('you_name'))}</span><b>${h.wins} : ${h.losses}</b><span>${esc(u.name)}</span></div><p class="seghint">${esc(t('h2h_games', { n: h.games }))}</p>` : `<p class="empty">${esc(t('h2h_none'))}</p>`}
@@ -5963,12 +5965,12 @@ a.mini { text-decoration: none; display: inline-flex; align-items: center; }
     }
   }
 
-  function toast(msg, kind) {
+  function toast(msg, kind, ms) {
     const el = $('#toast');
     el.textContent = msg;
     el.className = 'show ' + (kind || '');
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => { el.className = ''; }, 3400);
+    toastTimer = setTimeout(() => { el.className = ''; }, ms || 3400);
   }
 
   // ---------- chat, emoty, pozvánky ----------
@@ -6275,7 +6277,7 @@ a.mini { text-decoration: none; display: inline-flex; align-items: center; }
       else if (m.t === 'invite') {
         if (!net.invites.some((i) => i.id === m.inv.id) && !(net.code === m.inv.table)) net.invites.push(m.inv);
         render();
-      } else if (m.t === 'invite_sent') toast(m.online ? t('invite_sent') : t('invite_queued'), 'info');
+      } else if (m.t === 'invite_sent') toast(m.online ? t('invite_sent') : m.pushed ? t('invite_pushed') : t('invite_queued'), 'info', m.online ? undefined : 5000);
       else if (m.t === 'invite_answer') toast(t(m.accept ? 'invite_accepted' : 'invite_declined', { name: m.by.name }), 'info');
     };
     ws.onclose = () => {

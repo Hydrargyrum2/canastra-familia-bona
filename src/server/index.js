@@ -608,6 +608,7 @@ export class Lobby extends DurableObject {
       const targets = this.socketsOf(to);
       // kdo si odesílatele ztlumil, pozvánky od něj nedostává
       if (await A.isMuted(to, me.id)) { safeSend(ws, { t: 'invite_sent', to, online: targets.length > 0 }); return; }
+      let pushed = 0;
       if (targets.length) {
         for (const t of targets) safeSend(t, { t: 'invite', inv });
       } else {
@@ -615,9 +616,9 @@ export class Lobby extends DurableObject {
         const list = ((await this.ctx.storage.get(key)) || []).filter((i) => i.from.id !== me.id || i.table !== inv.table);
         list.push(inv);
         await this.ctx.storage.put(key, list.slice(-10));
-        try { await A.pushTo(to, 'invite', { name: me.name, code: inv.table }, '/?t=' + inv.table); } catch (e) { console.warn('push invite', e && e.message); }
+        try { pushed = await A.pushTo(to, 'invite', { name: me.name, code: inv.table }, '/?t=' + inv.table); } catch (e) { console.warn('push invite', e && e.message); }
       }
-      safeSend(ws, { t: 'invite_sent', to, online: targets.length > 0 });
+      safeSend(ws, { t: 'invite_sent', to, online: targets.length > 0, pushed: pushed > 0 });
     } else if (m.t === 'invite_answer') {
       const key = 'pending:' + me.id;
       const list = (await this.ctx.storage.get(key)) || [];
