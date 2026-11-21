@@ -216,7 +216,7 @@
         <small>${{ easy: 'Často zapomínají, co kde mají, a dělají chyby.', medium: 'Pamatují si pár tahů a hlídají, co kdo bere.', hard: 'Nic nezapomenou a sledují každou kartu.' }[settings.level]}</small></div>
       <div class="field"><button class="toggle ${settings.helper ? 'on' : ''}" data-act="helper"><span>Pomocník paměti<br><small style="color:var(--muted)">ukazuje hodnoty karet, které znáš</small></span><i></i></button></div>
       <div class="btns" style="display:grid;gap:8px"><button class="btn primary" data-act="newgame">Hrát</button></div>
-      <div class="links"><button class="linkbtn" data-act="rules">Pravidla</button><a href="/">Canastra família Bona</a></div>`;
+      <div class="links"><button class="linkbtn" data-act="rules">Pravidla</button></div>`;
   }
 
   // ---------- okna ----------

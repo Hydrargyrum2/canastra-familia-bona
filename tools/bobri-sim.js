@@ -1,6 +1,6 @@
 // Simulace robotů pro Bobry a krysy: node tools/bobri-sim.js [hry] [úrovně oddělené čárkou] [tune JSON]
-const E = require('../public/bobri/engine.js');
-const B = require('../public/bobri/bot.js');
+const E = require('../bobri/public/engine.js');
+const B = require('../bobri/public/bot.js');
 const games = +process.argv[2] || 400;
 const levels = (process.argv[3] || 'easy,medium,hard').split(',');
 if (process.argv[4]) B.setTune(JSON.parse(process.argv[4]));

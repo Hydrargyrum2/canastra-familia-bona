@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Bobři a krysy – karetní hra na paměť online</title>
+<meta name="description" content="Bobři a krysy: rodinná karetní hra na paměť. Měj před sebou co nejnižší karty, hlídej, kam se karty stěhují, a zaklepej ve správnou chvíli. Hraj zdarma v prohlížeči proti robotům.">
+<meta name="theme-color" content="#0c2f3d">
+<link rel="canonical" href="https://bobri-a-krysy.faldik2033.workers.dev/">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='18' cy='16' r='7' fill='%237a4a2a'/%3E%3Ccircle cx='46' cy='16' r='7' fill='%237a4a2a'/%3E%3Cellipse cx='32' cy='34' rx='22' ry='20' fill='%239a6034'/%3E%3Cellipse cx='32' cy='42' rx='12' ry='9' fill='%23d9b48a'/%3E%3Crect x='28' y='43' width='8' height='8' rx='1.5' fill='%23fff'/%3E%3Ccircle cx='24' cy='29' r='3' fill='%232b1a0e'/%3E%3Ccircle cx='40' cy='29' r='3' fill='%232b1a0e'/%3E%3Cellipse cx='32' cy='37' rx='4' ry='3' fill='%233a2414'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css?v=2">
+</head>
+<body>
+<div id="app">
+  <header id="top">
+    <h1 class="brand"><span class="logo" aria-hidden="true"></span>Bobři a krysy</h1>
+    <div id="roundInfo"></div>
+    <button class="iconbtn" data-act="menu" aria-label="Nabídka">☰</button>
+  </header>
+  <main id="game" hidden>
+    <section id="opps" aria-label="Soupeři"></section>
+    <section id="table" aria-label="Stůl">
+      <div class="piles">
+        <button class="pile" id="drawPile" data-act="drawpile" aria-label="Balíček"></button>
+        <div id="drawnSpot" aria-live="polite"></div>
+        <button class="pile" id="discardPile" data-act="discardpile" aria-label="Odkládací hromádka"></button>
+      </div>
+      <p id="status" aria-live="polite"></p>
+    </section>
+    <section id="me" aria-label="Tvoje karty">
+      <div class="mehead"><span class="who">Ty</span><span id="myTotal"></span></div>
+      <div id="myCards" class="row big"></div>
+    </section>
+    <div id="bar"></div>
+  </main>
+  <main id="start"></main>
+  <div id="overlay" hidden><div class="sheet" role="dialog" aria-modal="true"></div></div>
+  <div id="toast" role="status" hidden></div>
+  <div id="fx" aria-hidden="true"></div>
+</div>
+<script src="engine.js?v=1"></script>
+<script src="bot.js?v=1"></script>
+<script src="app.js?v=2"></script>
+</body>
+</html>

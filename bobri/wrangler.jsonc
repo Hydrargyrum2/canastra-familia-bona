@@ -1,0 +1,12 @@
+{
+  "$schema": "../node_modules/wrangler/config-schema.json",
+  // Samostatný web hry Bobři a krysy (jen statické soubory, žádný server).
+  // Jméno musí odpovídat jménu Workeru v Cloudflare dashboardu.
+  "name": "bobri-a-krysy",
+  "compatibility_date": "2025-10-01",
+  "workers_dev": true,
+  "assets": {
+    "directory": "./public",
+    "not_found_handling": "single-page-application"
+  }
+}
