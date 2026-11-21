@@ -2676,6 +2676,8 @@ a.mini { text-decoration: none; display: inline-flex; align-items: center; }
     app_windows: "Klikni na ikonu instalace vpravo v adresním řádku. Případně v nabídce prohlížeče najdi „Aplikace“ nebo „Uložit a sdílet“ a zvol instalaci.",
     app_iphone_t: "iPhone a iPad (Safari)",
     app_installed_toast: "Hotovo, aplikace je nainstalovaná.",
+    draw_locked: "Máš označené karty, takže teď můžeš brát jen hromádku. Když chceš líznout z balíčku, nejdřív zruš výběr ťuknutím na karty.",
+    hint_sel_pile: "Máš označené karty – vezmi s nimi hromádku. Z balíčku líznout nejde, dokud výběr nezrušíš.",
     invite_pushed: "Hráč není online – poslali jsme mu upozornění. Pozvánku uvidí i po přihlášení, počkej u stolu.",
     invite_queued: "Hráč není online a nemá zapnutá upozornění. Pozvánku uvidí po přihlášení.",
     pw_title: "Kam dát {card}?",
@@ -3259,6 +3261,8 @@ a.mini { text-decoration: none; display: inline-flex; align-items: center; }
     app_windows: "Click the install icon on the right of the address bar. Or look for “Apps” or “Save and share” in the browser menu and choose install.",
     app_iphone_t: "iPhone and iPad (Safari)",
     app_installed_toast: "Done, the app is installed.",
+    draw_locked: "You have cards selected, so you can only take the pile now. To draw from the stock, first deselect the cards.",
+    hint_sel_pile: "You have cards selected – take the pile with them. You can't draw from the stock until you deselect them.",
     invite_pushed: "The player is offline – we sent them a notification. They'll also see the invite when they sign in, so wait at the table.",
     invite_queued: "The player is offline and has notifications off. They'll see the invite when they sign in.",
     pw_title: "Where should {card} go?",
@@ -3842,6 +3846,8 @@ a.mini { text-decoration: none; display: inline-flex; align-items: center; }
     app_windows: "Clique no ícone de instalação à direita da barra de endereço. Ou procure “Apps” ou “Salvar e compartilhar” no menu do navegador e escolha instalar.",
     app_iphone_t: "iPhone e iPad (Safari)",
     app_installed_toast: "Pronto, o aplicativo está instalado.",
+    draw_locked: "Você tem cartas marcadas, então agora só pode pegar o monte. Para comprar do baralho, desmarque as cartas primeiro.",
+    hint_sel_pile: "Você tem cartas marcadas – pegue o monte com elas. Não dá para comprar do baralho até desmarcá-las.",
     invite_pushed: "O jogador está offline – enviamos uma notificação. Ele também verá o convite ao entrar; espere na mesa.",
     invite_queued: "O jogador está offline e não ativou as notificações. Verá o convite ao entrar.",
     pw_title: "Onde colocar {card}?",
@@ -4727,7 +4733,8 @@ a.mini { text-decoration: none; display: inline-flex; align-items: center; }
 
   function centerHTML() {
     const mine = myTurn() && st.phase === 'draw';
-    const canDraw = mine && st.stock.length > 0;
+    // označené karty = hráč chce brát hromádku; balíček je zamčený, aby se nepřeklikl
+    const canDraw = mine && st.stock.length > 0 && !sel.size;
     const pileErr = mine ? E.pileError(st, ME) : true;
     const top = st.pile[st.pile.length - 1];
     const blocked = top && E.blocksPile(top);
@@ -4757,8 +4764,8 @@ a.mini { text-decoration: none; display: inline-flex; align-items: center; }
     else if (!myTurn()) hint = `<span class="dots">${esc(t('playing', { name: nameOf(st.current) }))}</span>`;
     else if (st.phase === 'draw') {
       const canPile = !E.pileError(st, ME);
-      const parts = st.stock.length ? [t('hint_draw')] : [t('hint_stock_out')];
-      if (canPile) parts.push(t('hint_pile_how'));
+      const parts = sel.size ? [t('hint_sel_pile')] : st.stock.length ? [t('hint_draw')] : [t('hint_stock_out')];
+      if (canPile && !sel.size) parts.push(t('hint_pile_how'));
       if (!st.stock.length && canPile) parts.push(t('hint_else_end'));
       hint = esc(parts.join(' '));
     } else {
@@ -4805,6 +4812,10 @@ a.mini { text-decoration: none; display: inline-flex; align-items: center; }
       if (!st.stock.length) {
         return `<button class="btn primary" data-act="pile" ${pileErr ? 'disabled' : ''}>${esc(t('btn_take_pile'))}</button>
           <button class="btn" data-act="pass">${esc(t('btn_end_round'))}</button>`;
+      }
+      if (sel.size) {
+        return `<button class="btn" data-act="draw" disabled title="${esc(t('draw_locked'))}">${esc(t('btn_draw'))}</button>
+        <button class="btn primary" data-act="pile">${esc(t('btn_take_pile'))}</button>`;
       }
       return `<button class="btn primary" data-act="draw">${esc(t('btn_draw'))}</button>
         <button class="btn" data-act="pile">${esc(t('btn_take_pile'))}</button>`;
@@ -6751,6 +6762,7 @@ a.mini { text-decoration: none; display: inline-flex; align-items: center; }
         break;
       case 'draw':
         if (!myTurn()) return;
+        if (sel.size && st.phase === 'draw') { toast(t('draw_locked'), 'info'); return; }
         r = online() ? remote({ type: 'draw' }) : E.drawStock(st, ME);
         if (r.ok && r.red3) toast(t('toast_red3'), 'info');
         break;

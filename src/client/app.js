@@ -382,7 +382,8 @@
 
   function centerHTML() {
     const mine = myTurn() && st.phase === 'draw';
-    const canDraw = mine && st.stock.length > 0;
+    // označené karty = hráč chce brát hromádku; balíček je zamčený, aby se nepřeklikl
+    const canDraw = mine && st.stock.length > 0 && !sel.size;
     const pileErr = mine ? E.pileError(st, ME) : true;
     const top = st.pile[st.pile.length - 1];
     const blocked = top && E.blocksPile(top);
@@ -412,8 +413,8 @@
     else if (!myTurn()) hint = `<span class="dots">${esc(t('playing', { name: nameOf(st.current) }))}</span>`;
     else if (st.phase === 'draw') {
       const canPile = !E.pileError(st, ME);
-      const parts = st.stock.length ? [t('hint_draw')] : [t('hint_stock_out')];
-      if (canPile) parts.push(t('hint_pile_how'));
+      const parts = sel.size ? [t('hint_sel_pile')] : st.stock.length ? [t('hint_draw')] : [t('hint_stock_out')];
+      if (canPile && !sel.size) parts.push(t('hint_pile_how'));
       if (!st.stock.length && canPile) parts.push(t('hint_else_end'));
       hint = esc(parts.join(' '));
     } else {
@@ -460,6 +461,10 @@
       if (!st.stock.length) {
         return `<button class="btn primary" data-act="pile" ${pileErr ? 'disabled' : ''}>${esc(t('btn_take_pile'))}</button>
           <button class="btn" data-act="pass">${esc(t('btn_end_round'))}</button>`;
+      }
+      if (sel.size) {
+        return `<button class="btn" data-act="draw" disabled title="${esc(t('draw_locked'))}">${esc(t('btn_draw'))}</button>
+        <button class="btn primary" data-act="pile">${esc(t('btn_take_pile'))}</button>`;
       }
       return `<button class="btn primary" data-act="draw">${esc(t('btn_draw'))}</button>
         <button class="btn" data-act="pile">${esc(t('btn_take_pile'))}</button>`;
@@ -2406,6 +2411,7 @@
         break;
       case 'draw':
         if (!myTurn()) return;
+        if (sel.size && st.phase === 'draw') { toast(t('draw_locked'), 'info'); return; }
         r = online() ? remote({ type: 'draw' }) : E.drawStock(st, ME);
         if (r.ok && r.red3) toast(t('toast_red3'), 'info');
         break;
