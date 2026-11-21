@@ -1,7 +1,7 @@
 // Service worker: aplikace se dá nainstalovat a hra proti robotům jde i bez internetu.
 // Stránka se bere vždy nejdřív ze sítě (ať je hned nejnovější verze), uložená kopie jen když síť nejde.
 // /api/* se nikdy neukládá. Zobrazuje i upozornění (pozvánky, přátelé).
-const CACHE = 'canastra-bona-v3';
+const CACHE = 'canastra-bona-v4';
 const SHELL = ['/', '/manifest.webmanifest', '/icons/icon.svg', '/icons/icon-192.png', '/icons/icon-512.png', '/icons/maskable-512.png', '/icons/apple-touch-icon.png', '/icons/favicon-32.png'];
 
 self.addEventListener('install', (e) => {
@@ -34,12 +34,14 @@ self.addEventListener('fetch', (e) => {
     return;
   }
   if (url.origin !== self.location.origin || url.pathname.startsWith('/api/') || url.pathname.startsWith('/music/')) return;
+  // jiné hry na stejném webu (např. /bobri/) si řeší všechno samy
+  if (url.pathname.startsWith('/bobri/') || url.pathname === '/bobri') return;
 
   // stránka (i s ?t=KÓD apod.): síť, jinak uložená
   if (req.mode === 'navigate') {
     e.respondWith(
       fetch(req)
-        .then((r) => { if (r.ok) { const copy = r.clone(); caches.open(CACHE).then((c) => c.put('/', copy)); } return r; })
+        .then((r) => { if (r.ok && url.pathname === '/') { const copy = r.clone(); caches.open(CACHE).then((c) => c.put('/', copy)); } return r; })
         .catch(() => caches.match('/'))
     );
     return;

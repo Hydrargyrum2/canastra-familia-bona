@@ -148,6 +148,8 @@ for (const key of Object.keys(PAGES)) {
   fs.writeFileSync(path.join(dir, 'index.html'), page(key));
 }
 const urls = [{ loc: SITE + '/', pr: '1.0' }].concat(Object.values(PAGES).map((p) => ({ loc: url(p), pr: '0.8' })));
+// další hra na stejném webu
+urls.push({ loc: SITE + '/bobri/', pr: '0.8' });
 fs.writeFileSync(path.join(PUB, 'sitemap.xml'), `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
 ${urls.map((u) => `  <url><loc>${u.loc}</loc><lastmod>${today}</lastmod><changefreq>weekly</changefreq><priority>${u.pr}</priority></url>`).join('\n')}
