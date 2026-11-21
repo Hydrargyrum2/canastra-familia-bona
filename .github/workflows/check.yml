@@ -5,9 +5,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - run: |
-          for u in / /pravidla/ /api/me /sw.js; do
-            curl -s -o /dev/null -w "$u %{http_code} %{time_total}s ip=%{remote_ip}\n" --max-time 25 "https://canastra-familia-bona.faldik2033.workers.dev$u" || echo "$u FAIL"
+          B=https://canastra-familia-bona.faldik2033.workers.dev
+          for u in / /bobri/ /bobri/engine.js?v=1 /bobri/bot.js?v=1 /bobri/app.js?v=1 /bobri/style.css?v=1 /sw.js /sitemap.xml; do
+            curl -s -o /dev/null -w "$u %{http_code} %{content_type} %{size_download}B\n" --max-time 25 "$B$u" || echo "$u FAIL"
           done
-          curl -sI --max-time 20 https://canastra-familia-bona.faldik2033.workers.dev/ | head -20
-          dig +short canastra-familia-bona.faldik2033.workers.dev A
-          dig +short canastra-familia-bona.faldik2033.workers.dev AAAA
+          curl -s --max-time 20 $B/bobri/ | grep -o "<title>[^<]*</title>"
+          curl -s --max-time 20 $B/sw.js | grep -c bobri
