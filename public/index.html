@@ -418,6 +418,13 @@ table.res tr.tot td:nth-child(2) { color: var(--brass); }
   font-weight: 700; font-size: 15px;
 }
 .pick:hover, .pick:focus-visible { border-color: var(--brass); background: rgba(241,195,76,0.12); }
+.picks.list { grid-template-columns: 1fr; --cw: 36px; }
+.picks.list .pick { padding: 12px 10px; }
+.pick .pwrow { position: relative; display: flex; padding-left: 14px; }
+.pick .pwrow .card { margin-left: -14px; }
+.pick .pwrow .mc { position: absolute; top: -7px; right: -12px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--felt-deep); border: 1px solid var(--line); font-size: 11px; line-height: 16px; text-align: center; font-weight: 600; }
+.pick small { display: block; font-weight: 500; color: var(--muted); font-size: 12.5px; }
+.card.pwtop { box-shadow: 0 0 0 2px var(--brass), 0 3px 8px rgba(0,0,0,0.28); }
 
 .seghint { font-size: 13px; color: var(--muted); margin: 2px 0 6px; }
 
@@ -2659,6 +2666,11 @@ a.mini { text-decoration: none; display: inline-flex; align-items: center; }
     app_windows: "Klikni na ikonu instalace vpravo v adresním řádku. Případně v nabídce prohlížeče najdi „Aplikace“ nebo „Uložit a sdílet“ a zvol instalaci.",
     app_iphone_t: "iPhone a iPad (Safari)",
     app_installed_toast: "Hotovo, aplikace je nainstalovaná.",
+    pw_title: "Kam dát {card}?",
+    pw_lead: "Vrchní karta z hromádky pasuje k víc tvým vykládkám. Vyber, ke které ji přiložíš. (Příště můžeš rovnou ťuknout na vykládku.)",
+    pw_canasta: "Sem – vznikne canasta",
+    pw_here: "Sem",
+    pw_moved: "žolík se posune",
     eh_title: "Karty v ruce na konci kola",
     eh_pts_me: "+{n} pro tebe",
     eh_pts_us: "+{n} pro vás",
@@ -3236,6 +3248,11 @@ a.mini { text-decoration: none; display: inline-flex; align-items: center; }
     app_windows: "Click the install icon on the right of the address bar. Or look for “Apps” or “Save and share” in the browser menu and choose install.",
     app_iphone_t: "iPhone and iPad (Safari)",
     app_installed_toast: "Done, the app is installed.",
+    pw_title: "Where should {card} go?",
+    pw_lead: "The top card of the pile fits more than one of your melds. Choose which one to add it to. (Next time you can tap the meld directly.)",
+    pw_canasta: "Here – makes a canasta",
+    pw_here: "Here",
+    pw_moved: "the wild card moves",
     eh_title: "Cards left in hand",
     eh_pts_me: "+{n} for you",
     eh_pts_us: "+{n} for your team",
@@ -3813,6 +3830,11 @@ a.mini { text-decoration: none; display: inline-flex; align-items: center; }
     app_windows: "Clique no ícone de instalação à direita da barra de endereço. Ou procure “Apps” ou “Salvar e compartilhar” no menu do navegador e escolha instalar.",
     app_iphone_t: "iPhone e iPad (Safari)",
     app_installed_toast: "Pronto, o aplicativo está instalado.",
+    pw_title: "Onde colocar {card}?",
+    pw_lead: "A carta de cima do monte serve em mais de um dos seus jogos. Escolha em qual colocar. (Da próxima vez pode tocar direto no jogo.)",
+    pw_canasta: "Aqui – forma canastra",
+    pw_here: "Aqui",
+    pw_moved: "o curinga muda de lugar",
     eh_title: "Cartas na mão no fim da rodada",
     eh_pts_me: "+{n} para você",
     eh_pts_us: "+{n} para vocês",
@@ -5176,6 +5198,32 @@ a.mini { text-decoration: none; display: inline-flex; align-items: center; }
       <div class="stackbtns"><button class="btn" data-act="wildcancel">${esc(t('cancel'))}</button></div>`;
   }
 
+  // vrchní karta z hromádky pasuje k víc vlastním vykládkám: hráč vybere, ke které
+  function pileTargets() {
+    const top = st.pile[st.pile.length - 1];
+    if (!top) return [];
+    const out = [];
+    for (const m of st.teams[US()].melds) {
+      const chk = E.checkTakePile(st, ME, [], m.id);
+      if (chk.error) continue;
+      const cards = m.cards.concat([top]);
+      const order = E.meldOrder({ type: m.type, key: m.key, wildPos: chk.a.wildPos != null ? chk.a.wildPos : m.wildPos, cards });
+      out.push({ id: m.id, order, top, canasta: m.cards.length < 7 && cards.length >= 7, moved: !!chk.a.moved, choice: !!chk.a.choice });
+    }
+    return out.sort((a, b) => b.canasta - a.canasta);
+  }
+  function pileWhereHTML() {
+    const opts = pileTargets();
+    if (!opts.length) return '';
+    const top = opts[0].top;
+    const opt = (o) => `<button class="pick" data-act="pilepick" data-v="${o.id}">
+        <span class="pwrow">${o.order.map((c) => cardFace(c).replace('<span class="card', `<span class="card${c.id === top.id ? ' pwtop' : ''}`)).join('')}<span class="mc">${o.order.length}</span></span>
+        <span>${esc(t(o.canasta ? 'pw_canasta' : 'pw_here'))}${o.moved ? ` <small>${esc(t('pw_moved'))}</small>` : ''}</span></button>`;
+    return `<h2>${esc(t('pw_title', { card: cardLabel(top) }))}</h2><p>${esc(t('pw_lead'))}</p>
+      <div class="picks list">${opts.map(opt).join('')}</div>
+      <div class="stackbtns"><button class="btn" data-act="wildcancel">${esc(t('cancel'))}</button></div>`;
+  }
+
   // ---------- online okna ----------
   function authHTML() {
     const reg = net.authTab === 'register';
@@ -5666,6 +5714,7 @@ a.mini { text-decoration: none; display: inline-flex; align-items: center; }
     else if (overlay === 'log') html = online() ? (overlay = null, '') : logHTML();
     else if (overlay === 'round') html = roundHTML();
     else if (overlay === 'wild') html = wildHTML();
+    else if (overlay === 'pilewhere') html = pileWhereHTML();
     else if (overlay === 'auth') html = authHTML();
     else if (overlay === 'room') html = roomHTML();
     else if (overlay === 'friends' && net.user) html = friendsHTML();
@@ -6694,6 +6743,7 @@ a.mini { text-decoration: none; display: inline-flex; align-items: center; }
         break;
       case 'pile':
         if (!myTurn()) return;
+        if (!sel.size && st.phase === 'draw' && pileTargets().length > 1) { overlay = 'pilewhere'; break; }
         r = attempt('pile', pileVariant(null));
         if (r && r.ok) sel.clear();
         break;
@@ -6716,6 +6766,12 @@ a.mini { text-decoration: none; display: inline-flex; align-items: center; }
       case 'wildcancel':
         pending = null;
         overlay = null;
+        break;
+      case 'pilepick':
+        overlay = null;
+        if (!myTurn() || st.phase !== 'draw') break;
+        r = attempt('pile', { ids: [], meldId: Number(v) });
+        if (r && r.ok) sel.clear();
         break;
       case 'discard':
         if (!myTurn()) return;

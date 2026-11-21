@@ -867,6 +867,32 @@
       <div class="stackbtns"><button class="btn" data-act="wildcancel">${esc(t('cancel'))}</button></div>`;
   }
 
+  // vrchní karta z hromádky pasuje k víc vlastním vykládkám: hráč vybere, ke které
+  function pileTargets() {
+    const top = st.pile[st.pile.length - 1];
+    if (!top) return [];
+    const out = [];
+    for (const m of st.teams[US()].melds) {
+      const chk = E.checkTakePile(st, ME, [], m.id);
+      if (chk.error) continue;
+      const cards = m.cards.concat([top]);
+      const order = E.meldOrder({ type: m.type, key: m.key, wildPos: chk.a.wildPos != null ? chk.a.wildPos : m.wildPos, cards });
+      out.push({ id: m.id, order, top, canasta: m.cards.length < 7 && cards.length >= 7, moved: !!chk.a.moved, choice: !!chk.a.choice });
+    }
+    return out.sort((a, b) => b.canasta - a.canasta);
+  }
+  function pileWhereHTML() {
+    const opts = pileTargets();
+    if (!opts.length) return '';
+    const top = opts[0].top;
+    const opt = (o) => `<button class="pick" data-act="pilepick" data-v="${o.id}">
+        <span class="pwrow">${o.order.map((c) => cardFace(c).replace('<span class="card', `<span class="card${c.id === top.id ? ' pwtop' : ''}`)).join('')}<span class="mc">${o.order.length}</span></span>
+        <span>${esc(t(o.canasta ? 'pw_canasta' : 'pw_here'))}${o.moved ? ` <small>${esc(t('pw_moved'))}</small>` : ''}</span></button>`;
+    return `<h2>${esc(t('pw_title', { card: cardLabel(top) }))}</h2><p>${esc(t('pw_lead'))}</p>
+      <div class="picks list">${opts.map(opt).join('')}</div>
+      <div class="stackbtns"><button class="btn" data-act="wildcancel">${esc(t('cancel'))}</button></div>`;
+  }
+
   // ---------- online okna ----------
   function authHTML() {
     const reg = net.authTab === 'register';
@@ -1357,6 +1383,7 @@
     else if (overlay === 'log') html = online() ? (overlay = null, '') : logHTML();
     else if (overlay === 'round') html = roundHTML();
     else if (overlay === 'wild') html = wildHTML();
+    else if (overlay === 'pilewhere') html = pileWhereHTML();
     else if (overlay === 'auth') html = authHTML();
     else if (overlay === 'room') html = roomHTML();
     else if (overlay === 'friends' && net.user) html = friendsHTML();
@@ -2385,6 +2412,7 @@
         break;
       case 'pile':
         if (!myTurn()) return;
+        if (!sel.size && st.phase === 'draw' && pileTargets().length > 1) { overlay = 'pilewhere'; break; }
         r = attempt('pile', pileVariant(null));
         if (r && r.ok) sel.clear();
         break;
@@ -2407,6 +2435,12 @@
       case 'wildcancel':
         pending = null;
         overlay = null;
+        break;
+      case 'pilepick':
+        overlay = null;
+        if (!myTurn() || st.phase !== 'draw') break;
+        r = attempt('pile', { ids: [], meldId: Number(v) });
+        if (r && r.ok) sel.clear();
         break;
       case 'discard':
         if (!myTurn()) return;

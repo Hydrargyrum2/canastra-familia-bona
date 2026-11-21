@@ -385,6 +385,13 @@ table.res tr.tot td:nth-child(2) { color: var(--brass); }
   font-weight: 700; font-size: 15px;
 }
 .pick:hover, .pick:focus-visible { border-color: var(--brass); background: rgba(241,195,76,0.12); }
+.picks.list { grid-template-columns: 1fr; --cw: 36px; }
+.picks.list .pick { padding: 12px 10px; }
+.pick .pwrow { position: relative; display: flex; padding-left: 14px; }
+.pick .pwrow .card { margin-left: -14px; }
+.pick .pwrow .mc { position: absolute; top: -7px; right: -12px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--felt-deep); border: 1px solid var(--line); font-size: 11px; line-height: 16px; text-align: center; font-weight: 600; }
+.pick small { display: block; font-weight: 500; color: var(--muted); font-size: 12.5px; }
+.card.pwtop { box-shadow: 0 0 0 2px var(--brass), 0 3px 8px rgba(0,0,0,0.28); }
 
 .seghint { font-size: 13px; color: var(--muted); margin: 2px 0 6px; }
 

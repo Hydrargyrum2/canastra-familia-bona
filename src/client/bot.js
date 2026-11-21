@@ -340,7 +340,18 @@
     const team = st.teams[p.team];
     const top = st.pile[st.pile.length - 1];
     const okChoice = (ids, meldId) => !E.checkTakePile(st, pi, ids, meldId).error;
-    for (const m of team.melds) if (okChoice([], m.id)) return { ids: [], meldId: m.id };
+    // k vykládce: přednost má ta, kde vznikne canasta (čistá před špinavou), jinak nejdelší rozestavěná
+    const RC = E.RULES.canasta;
+    const fits = team.melds.filter((m) => okChoice([], m.id));
+    if (fits.length) {
+      const score = (m) => {
+        const n = m.cards.length + 1;
+        if (m.cards.length < RC && n >= RC) return 1000 + (m.cards.some(E.isWild) ? 0 : 500);
+        return n >= RC ? 50 + n : 100 + n * 10;
+      };
+      fits.sort((a, b) => score(b) - score(a));
+      return { ids: [], meldId: fits[0].id };
+    }
     const withTop = p.hand.concat([top]);
     const cands = candidateMelds(withTop, true)
       .filter((ids) => ids.includes(top.id))
