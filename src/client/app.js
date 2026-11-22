@@ -29,7 +29,24 @@
     } catch (e) { /* bez vyrovnání */ }
   }
   fitTextScale();
-  window.addEventListener('resize', fitTextScale);
+  window.addEventListener('resize', () => { fitTextScale(); fitHand(); placeChatBtn(); });
+  // nápověda/trenér nad rukou mění výšku i bez celého překreslení → posunout tlačítko chatu
+  if (window.ResizeObserver) { try { new ResizeObserver(() => placeChatBtn()).observe(document.getElementById('handwrap')); } catch (e) { /* nevadí */ } }
+
+  // Karty v ruce se překrývají tak, aby se vešly do jedné řady (na úzkém telefonu
+  // jinak zabíraly dvě řady a půl obrazovky). Z každé karty zůstane vidět aspoň roh.
+  const HAND_VIS_MAX = 0.56;
+  const HAND_VIS_MIN = 0.34;
+  function fitHand() {
+    const el = document.getElementById('hand');
+    if (!el) return;
+    const n = el.querySelectorAll('.hc').length;
+    const cw = parseFloat(getComputedStyle(el).getPropertyValue('--cw')) || 50;
+    const avail = el.clientWidth - 2;
+    let vis = HAND_VIS_MAX;
+    if (n > 1 && avail > cw) vis = Math.max(HAND_VIS_MIN, Math.min(HAND_VIS_MAX, (avail - cw) / ((n - 1) * cw)));
+    el.style.setProperty('--ov', (1 - vis).toFixed(3));
+  }
   const EMOTES = [
     { id: 'hi', e: '👋' }, { id: 'laugh', e: '😂' }, { id: 'slow', e: '🐌' }, { id: 'sleep', e: '😴' },
     { id: 'luck', e: '🍀' }, { id: 'clown', e: '🤡' }, { id: 'fire', e: '🔥' }, { id: 'joker', e: '🃏' },
@@ -1462,6 +1479,7 @@
     $('#handwrap').classList.toggle('myturn', !!myTurn());
     $('#hhead').innerHTML = handHeadHTML();
     if (!(drag && drag.active)) $('#hand').innerHTML = handHTML();
+    fitHand();
     $('#actions').innerHTML = actionsHTML();
     renderCoach();
     renderOverlay();
@@ -1666,6 +1684,7 @@
     btn.hidden = !inT;
     btn.innerHTML = `💬${net.unread ? `<span class="nb">${net.unread > 9 ? '9+' : net.unread}</span>` : ''}`;
     btn.setAttribute('aria-label', t('chat_title'));
+    placeChatBtn();
     const panel = $('#chat');
     panel.hidden = !(inT && net.chatOpen);
     if (!panel.hidden && !panel.dataset.built) buildChat();
@@ -1676,6 +1695,18 @@
       renderEmoteBar();
     }
     renderInvites();
+  }
+  // Tlačítko chatu sedí vpravo v řádku „Tvoje karty“, aby nepřekrývalo karty v ruce.
+  function placeChatBtn() {
+    const btn = $('#chatBtn');
+    const hh = $('#hhead');
+    const app = $('#app');
+    if (!btn || btn.hidden || !hh || !app) return;
+    const r = hh.getBoundingClientRect();
+    if (!r.height) { btn.classList.remove('inhead'); btn.style.top = ''; return; }
+    const a = app.getBoundingClientRect();
+    btn.classList.add('inhead');
+    btn.style.top = Math.round(r.top - a.top + r.height / 2 - 20) + 'px';
   }
   function buildChat() {
     const panel = $('#chat');

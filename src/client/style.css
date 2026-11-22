@@ -254,12 +254,12 @@ button.meld { cursor: pointer; }
 .hhead .grow { flex: 1; }
 #hand {
   display: flex; flex-wrap: wrap; row-gap: 8px;
-  padding: 14px 0 8px calc(var(--cw) * 0.44);
+  padding: 14px 0 8px calc(var(--cw) * var(--ov, 0.44));
   max-height: 34vh; overflow-y: auto;
 }
 .hc {
   background: none; border: 0; padding: 0; cursor: pointer;
-  margin-left: calc(var(--cw) * -0.44);
+  margin-left: calc(var(--cw) * var(--ov, 0.44) * -1);
   transition: transform 140ms ease;
   border-radius: 7px;
 }
@@ -353,6 +353,15 @@ table.res tr.tot td:nth-child(2) { color: var(--brass); }
 
 #handwrap.myturn { border-top-color: var(--brass); }
 @media (min-width: 420px) { :root { --cw: 54px; } }
+/* nižší telefony: méně volného místa kolem ruky a tlačítek, ať zbude víc stolu */
+@media (max-height: 780px) {
+  #handwrap { padding-top: 6px; }
+  .hhead { margin-bottom: 2px; }
+  #hand { padding-top: 10px; padding-bottom: 4px; }
+  #status { margin-bottom: 4px; }
+  #actions { padding-top: 8px; padding-bottom: calc(8px + env(safe-area-inset-bottom)); }
+  .btn, .wait { min-height: 42px; }
+}
 @media (max-width: 480px) {
   .stack, .picks { --cw: 44px; }
   .meld { --cwb: 44px; } /* na mobilu menší, ale vykládky pořád stejně velké jako balíček */
@@ -452,6 +461,7 @@ table.res tr.tot td:nth-child(2) { color: var(--brass); }
   width: 50px; height: 50px; border-radius: 50%; cursor: pointer; font-size: 22px;
   border: 1px solid var(--brass); background: #0f3f38; box-shadow: 0 8px 20px rgba(0,0,0,0.45);
 }
+#chatBtn.inhead { width: 40px; height: 40px; font-size: 18px; bottom: auto; right: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.4); }
 #chatBtn .nb {
   position: absolute; top: -4px; right: -4px; min-width: 20px; height: 20px; padding: 0 5px; border-radius: 10px;
   background: var(--suit-red); color: #fff; font-size: 12px; font-weight: 700; line-height: 20px;
