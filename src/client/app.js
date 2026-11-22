@@ -9,6 +9,27 @@
   const SITE_URL = 'https://canastra-familia-bona.faldik2033.workers.dev';
   const SUIT_ORDER = { S: 0, H: 1, C: 2, D: 3 };
   const LEVELS = ['easy', 'medium', 'hard', 'expert'];
+
+  // Velké písmo v systému: Firefox na Androidu pak zvětšuje jen text (ne karty ani stůl)
+  // a rozložení se rozpadne. Zvětšení do 15 % necháme kvůli čitelnosti, zbytek vyrovnáme
+  // přes --fz (build násobí každou velikost písma touto proměnnou).
+  const TEXT_SCALE_MAX = 1.15;
+  function fitTextScale() {
+    try {
+      const root = document.documentElement;
+      const p = document.createElement('span');
+      p.style.cssText = 'position:absolute;left:-9999px;top:0;visibility:hidden;display:inline-block;font-size:100px;line-height:1;padding:0;border:0';
+      p.textContent = 'M';
+      (document.body || root).appendChild(p);
+      const s = p.getBoundingClientRect().height / 100;
+      p.remove();
+      const fz = s > TEXT_SCALE_MAX ? TEXT_SCALE_MAX / s : 1;
+      root.style.setProperty('--fz', fz.toFixed(4));
+      root.dataset.textScale = s.toFixed(2);
+    } catch (e) { /* bez vyrovnání */ }
+  }
+  fitTextScale();
+  window.addEventListener('resize', fitTextScale);
   const EMOTES = [
     { id: 'hi', e: '👋' }, { id: 'laugh', e: '😂' }, { id: 'slow', e: '🐌' }, { id: 'sleep', e: '😴' },
     { id: 'luck', e: '🍀' }, { id: 'clown', e: '🤡' }, { id: 'fire', e: '🔥' }, { id: 'joker', e: '🃏' },

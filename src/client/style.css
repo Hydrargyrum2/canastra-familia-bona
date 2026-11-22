@@ -18,6 +18,7 @@
 }
 * { box-sizing: border-box; }
 html, body { height: 100%; margin: 0; }
+html { -webkit-text-size-adjust: 100%; -moz-text-size-adjust: 100%; text-size-adjust: 100%; }
 body {
   background:
     radial-gradient(ellipse 120% 70% at 50% 35%, var(--felt-lift) 0%, var(--felt) 48%, var(--felt-deep) 100%),
